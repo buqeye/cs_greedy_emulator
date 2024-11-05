@@ -1,0 +1,16 @@
+__pycache__
+.vscode
+*.pdf
+*.png
+.DS_Store
+.idea/
+venv
+env
+*.o
+*.so
+cpot.cpp
+cmake-build-*/
+CMakeFiles/
+build/
+**/.ipynb_checkpoints/
+lec_output
