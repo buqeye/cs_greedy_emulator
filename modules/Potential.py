@@ -49,7 +49,7 @@ class Potential:
         if self.name == "minnesota":
             return np.array([[1.] +[ lecs_dict[lbl] for lbl in self.lecAffineLabels] for lecs_dict in lecList_dict])
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
     def get_lec_dict(self, lecList_arr):
         if self.name == "minnesota":
@@ -61,7 +61,7 @@ class Potential:
                     ret.append({lec_lbl: lec for lec_lbl, lec in zip(self.lecAllLabels, lecs)})
             return ret
         else:
-            raise NotImplemented
+            raise NotImplementedError
 
     @property
     def sampleLecs(self):
@@ -84,10 +84,9 @@ class Potential:
         
         ret = [{**self.lecBaseValues, 
                 **{key: samples[j, ikey] for ikey, key in enumerate(lecs_lbl_to_be_varied)}} for j in range(len(samples))]
-        if as_dict:
-            return ret
-        else:  # TODO: this is hacked.. improve!
-            return np.column_stack((np.ones(n), np.array([[elem[lec] for lec in req_lecs] for elem in ret])))
+
+        return ret if as_dict else self.lec_array_from_dict(ret)
+    
 
     @staticmethod
     def getSampleLecs(potLbl, A=1):

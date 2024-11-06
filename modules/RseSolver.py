@@ -317,7 +317,6 @@ class RseSolver:
         Solves the single channel 2-body scattering problem by using a Runge-Kutta integrator
         from the scipy.integrate package, and then applying scattering boundary conditions.
         """
-
         if np.abs(self.grid.start) > 1e-6:
             raise ValueError(f"Grid doesn't start at zero; grid.points[0]={self.grid.points[0]}")
 
@@ -325,7 +324,10 @@ class RseSolver:
         
         uprime_array = None
         if method == "Numerov_affine":
-            lecList_array = self.potential.lec_array_from_dict(lecList)
+            if isinstance(lecList, np.ndarray):
+                lecList_array = lecList
+            else:
+                lecList_array = self.potential.lec_array_from_dict(lecList)
             u_array = self.numerov_solver.solve(lecList_array)
         else:
             u_array = []
@@ -356,23 +358,29 @@ class RseSolver:
         scattSols = []
         for ilecs, lecs in enumerate(lecList):
             scattSol = ScatteringSolution(scattExp=self.scattExp, 
-                                          vr=self.potential.eval(self.grid.points, lecs),
-                                          grid=self.grid, f=u_array[:,ilecs], 
-                                          fprime=uprime_array[:,ilecs], f_lbl=self.u_lbl, 
-                                          anc=1./self.scattExp.p,
+                                          vr=None, # self.potential.eval(self.grid.points, lecs),
+                                          grid=self.grid, 
+                                          f=u_array[:,ilecs], 
+                                          fprime=uprime_array[:,ilecs], 
+                                          f_lbl=self.u_lbl, 
+                                          anc=1., # /self.scattExp.p,
                                           Llbl=asympParam,
                                           matching=matching)
             scattSols.append(scattSol)
 
         if reduced_output:
             Lmatrix_values = np.array([scattSol.Lmatrix.value for scattSol in scattSols])
-            uarr = np.array([scattSol.u for scattSol in scattSols]).T
+            if self.inhomogeneous:
+                uarr = np.array([scattSol.chi for scattSol in scattSols]).T
+            else:
+                uarr = np.array([scattSol.u for scattSol in scattSols]).T
             return uarr, Lmatrix_values
         else:
             return scattSols
 
     
 def g(r, params):
+
     l = params["scattExp"].l
     mu = params["scattExp"].mu
     E = params["scattExp"].en

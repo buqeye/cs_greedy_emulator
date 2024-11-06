@@ -31,7 +31,7 @@ class ScatteringExp:
         return self.potential.channel.L
 
     def _getMu(self):
-        """returns the reduced mass \mu"""
+        """returns the reduced mass mu"""
         M1 = self.Aproj * mNeutron
         M2 = self.A * mNeutron
         return (M1 * M2) / (M1 + M2)

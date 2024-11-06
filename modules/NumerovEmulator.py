@@ -1,42 +1,59 @@
-import RseSolver
+from RseSolver import RseSolver
 import numpy as np
 from Grid import Grid
 from Numerov import numerov, AllAtOnceNumerov
 from scipy.linalg import orth
+
 
 class AffineGROM:
     def __init__(self, scattExp, grid, free_lecs, 
                  num_snapshots_init=3, num_snapshots_max=15, 
                  approach="pod", pod_rcond=1e-12, 
                  init_snapshot_lecs=None,
-                 greedy_max_iter=5, mode="linear") -> None:
+                 greedy_max_iter=5, 
+                 mode="linear",
+                 seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
         self.grid = grid
         self.free_lecs = free_lecs
         assert num_snapshots_init < num_snapshots_max, "can't have more initial snapshots than maximally allowed"
         self.num_snapshots_init = num_snapshots_init
-        self.num_snapshots_max = num_snapshots_max
+        self.num_snapshots_max =  num_snapshots_init if approach == "pod" else num_snapshots_max
         self.approach = approach
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
         self.greedy_logging = None
+        self.seed = seed
 
         # FOM solver (all-at-once Numerov)
-        solver = RseSolver(scattExp=self.scattExp, grid=self.grid, inhomogeneous=True)
+        self.rse_solver = RseSolver(scattExp=self.scattExp, grid=self.grid, inhomogeneous=True)
+        self.numerov_solver = self.rse_solver.numerov_solver
         
         # training and greedy algorithm if requested
         self.training(init_snapshot_lecs)
-        if self.greedy:
+        if self.approach == "greedy":
             self.greedy_algorithm()
+ 
+    @property
+    def potential(self):
+        return self.scattExp.potential
+    
+    def wavefct(self, cvec):
+        return self.snapshot_matrix @ cvec
+    
+    def Lmatrix(self, cvec):
+        return self.snapshot_Lvec @ cvec
                 
     def training(self, snapshot_lecs):
-        # if snapshot LECs are user-provided, use them; if not, ran
+        # if snapshot LECs are user-provided, use them; if not, run Latin Hypercube sampling
         if snapshot_lecs is None:
-            self.lec_all_samples = self.potential.getLecsSample(self.free_lecs, req_lecs=("V0", "V1"), as_dict=False,
-                                                                n=self.num_snapshots_max, mode=self.mode,
-                                                                range_factor=self.range_factor, seed=10203)
+            self.lec_all_samples = self.potential.getLecsSample(self.free_lecs, 
+                                                                as_dict=False,
+                                                                n=self.num_snapshots_max, 
+                                                                mode=self.mode,
+                                                                seed=self.seed)
             # search-type runs could also be done using random samples via sorted(..., key=lambda dictx: dictx["V0"])
         else:
             self.lec_all_samples = snapshot_lecs
@@ -44,52 +61,72 @@ class AffineGROM:
             self.num_snapshots_max = self.num_snapshots_init
 
         # initial snapshot selection (random)
-        rng = np.random.default_rng(seed=12345)
+        rng = np.random.default_rng(seed=self.seed)
         self.lec_snapshots_idxs = set(rng.choice(range(self.num_snapshots_max), 
                                                  size=self.num_snapshots_init, replace=False))
         
         # building snapshot matrix for chi, not Psi
         init_lecs = np.take(a=self.lec_all_samples, indices=list(self.lec_snapshots_idxs), axis=0)
-        self.snapshot_matrix = self.simulate(init_lecs)
+        self.snapshot_matrix, self.snapshot_Lvec = self.simulate(init_lecs)
+        self.snapshot_matrix2 = self.rse_solver.solve(lecList=init_lecs, method="Numerov_affine", 
+                                                      asympParam="K", matching=True, reduced_output=False)
+
         self.all_snapshot_idxs = set(range(len(self.lec_all_samples)))
 
         # POD snapshot matrix if requested
-        if self.pod:
+        if self.approach == "pod":
             self.apply_pod(update_offline_stage=False)
 
         # prestore arrays for efficient offline/online decomposition
         self.update_offline_stage()
     
+    @staticmethod
+    def truncated_svd(matrix, rcond=None):
+        # modified from scipy's `orth()` function:
+        # https://github.com/scipy/scipy/blob/v1.14.1/scipy/linalg/_decomp_svd.py#L302-L347
+        from scipy.linalg import svd
+        u, s, vh = svd(matrix, full_matrices=False)
+        M, N = u.shape[0], vh.shape[1]
+        if rcond is None:
+            rcond = np.finfo(s.dtype).eps * max(M, N)
+        tol = np.amax(s, initial=0.) * rcond
+        num = np.sum(s > tol, dtype=int)  # = r
+        Q = u[:, :num]
+        return Q, s[:num], vh.conjugate().transpose()[:, :num]
+
     def apply_pod(self, update_offline_stage=False):
         prev_rank = self.snapshot_matrix.shape[1]
-        self.snapshot_matrix = orth(self.snapshot_matrix, rcond=self.rcond)
+        Ur, S, Vr = self.truncated_svd(self.snapshot_matrix, rcond=self.pod_rcond)
+        self.snapshot_Lvec = np.linalg.multi_dot((self.snapshot_Lvec, Vr, np.diag(1./S))) #TODO: could be written without constructing the diag matrix
+        self.snapshot_matrix = Ur
+        
         curr_rank = self.snapshot_matrix.shape[1]
         compression_rate = 1. - curr_rank / prev_rank
-        print(f"using {curr_rank} POD modes out of {prev_rank} in total: compression rate is {compression_rate*100:.1f} %")
+        print(f"using {curr_rank} out of {prev_rank} POD modes in total: compression rate is {compression_rate*100:.1f} %")
         
         if update_offline_stage:
             self.update_offline_stage()
 
     def update_offline_stage(self):
-        X = self.snapshot_matrix[2:,2:]
-        X_dagger = X.conjugate().T
+        self.X_red = self.snapshot_matrix[2:,2:]
+        X_dagger = self.X_red.conjugate().T
         A_tensor = self.numerov_solver.A_tensor
         S_tensor = self.numerov_solver.S_tensor
 
         # emulator equations: reduction and projection
-        self.A_tilde = X_dagger @ A_tensor @ X
+        self.A_tilde = X_dagger @ A_tensor @ self.X_red
         self.s_tilde = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
 
         # prestore tensors for error estimates
         einsum_args = dict(optimize=True, dtype=np.longdouble)
         self.error_term1 = np.einsum("ik,alk,blm,mj->ijab", 
-                                      X_dagger, A_tensor.conjugate(), A_tensor, X, **einsum_args) 
-        self.error_term2 = np.einsum("bk,aki,ij->baj", S_tensor.conjugate(), A_tensor, X, **einsum_args)
+                                      X_dagger, A_tensor.conjugate(), A_tensor, self.X_red, **einsum_args) 
+        self.error_term2 = np.einsum("bk,aki,ij->baj", S_tensor.conjugate(), A_tensor, self.X_red, **einsum_args)
         self.error_term3 = S_tensor.conjugate().T @ S_tensor
 
     def simulate(self, lecList):
-        return self.solver.solve(lecList=lecList, method="Numerov_affine", 
-                                 asympParam="K", matching=True, reduced_output=True)
+        return self.rse_solver.solve(lecList=lecList, method="Numerov_affine", 
+                                     asympParam="K", matching=True, reduced_output=True)
 
     def emulate(self, lecList, estimate_error=False, errors_squared=True,
                 calc_error_bounds=False, cond_number_threshold=None, self_test=False):
@@ -99,18 +136,16 @@ class AffineGROM:
 
         for lecs in lecList:
             # reconstruct linear system
-            A_red = self.A_const_red + self.A_theta_red @ lecs 
-            S_const, y1_y2 = self.numerov_solver.get_S_const(lecs)
-            snapshot_matrix = self.snapshot_matrix[3:,:]  # need to remove (y0, y1, y_2) 
-            s_red = snapshot_matrix[:2,:].T.conjugate() @ S_const + self.S_theta_red @ lecs 
+            A_tilde = np.tensordot(lecs, self.A_tilde, axis=1)
+            s_tilde = np.tensordot(lecs, self.s_tilde, axis=1)
 
             # solve linear system and emulate
             if cond_number_threshold is not None:
-                cond_number = np.linalg.cond(A_red)
+                cond_number = np.linalg.cond(A_tilde)
                 if cond_number > cond_number_threshold:
                     print(f"Warning: condition number is large (aff)! {cond_number:.8e}")
-            coeffs = np.linalg.solve(A_red, s_red)
-            emulated_chi = snapshot_matrix @ coeffs
+            coeffs = np.linalg.solve(A_tilde, s_tilde)
+            emulated_chi = self.X_red @ coeffs
             
             # estimate error (proportional to the real error at best)
             error, lower_bound, upper_bound = self.numerov_solver.residuals(emulated_chi, lecs, squared=errors_squared, calc_error_bounds=True)
