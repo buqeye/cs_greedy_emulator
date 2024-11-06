@@ -5,7 +5,7 @@ from itertools import combinations
 from collections import namedtuple
 
 from constants import *
-from RseSolver import solve, LMatrix
+from RseSolver import RseSolver, LMatrix
 from uMatrix import getUmatrix, getInverseKvpLbl
 
 

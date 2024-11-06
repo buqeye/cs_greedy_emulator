@@ -34,7 +34,7 @@ class Channel:
 
     @property
     def LdotS(self):
-        """returns the expectation value of L \cdot S"""
+        """returns the expectation value of L cdot S"""
         return 0.5 * (self.J**2 - self.L*(self.L+1) - self.S*(self.S+1)) if self.L == self.LL else 0
 
     @property
