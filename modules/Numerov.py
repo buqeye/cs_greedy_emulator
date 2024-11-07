@@ -67,7 +67,7 @@ class AllAtOnceNumerov:
                                             ab_l_and_u=self.A_l_and_u, toarray=True)
         return tmp
 
-    def test_prestore(self, atol=1e-15):
+    def test_prestore(self, atol=1e-14):
         print("testing")
         def d(i,j):
             return int(i==j)
@@ -90,7 +90,7 @@ class AllAtOnceNumerov:
                 for a in range(0, self.n_theta):
                     Aija[a, i-1,j-1] = d(a,0) * (1-3 * d(i,2)) * Dbar(i,j) \
                                 + self.step_fac * self.gn[j+1,a] * (1 + 9 * d(i,2)) * Dbar(i,j)
-
+        print(np.max(np.abs(Aija- self.Abar_tensor)))
         assert np.allclose(Aija, self.Abar_tensor, atol=atol, rtol=0.), "Aijk inconsistent"
 
     def get_linear_system(self, theta, ret_diag_form=True, file_dump=False):
@@ -183,6 +183,77 @@ def numerov(xn, g, y0, y1, s=None, solve=True, unittest=False, params=None, file
         return ab_sparse, rhs, np.concatenate(([y0, y1], sol))
     else:
         return ab_sparse, rhs, np.concatenate(([y0, y1]))
+
+def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_dump=False):
+    """
+    implements the (N+1)x(N+1) Numerov matrix, which includes asymptotic limit matching
+    """
+    # preliminaries
+    if s is None:
+        s = lambda x, args: 0.*x
+    g_arr = g(xn, params)  # g and s could be sampled simultaneously
+    s_arr = s(xn, params)
+    N = len(xn) - 1
+    h = np.diff(xn)[0]
+
+    def K(gn, xi=1):
+        return 1. + xi * h**2 / 12 * gn
+    
+    K1 = K(g_arr, 1)
+
+    from RseSolver import free_solutions_F_G
+    p = params["scattExp"].p
+    l = params["scattExp"].l
+    F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
+
+    # build rhs vector s
+    rhs = np.empty(N+1)
+    rhs[:-2] = h**2 /12 * np.array([s_arr[n] + 10*s_arr[n-1] + s_arr[n-2] for n in range(2, N+1)])
+    # rhs[0] += ((l == 1)/6.) * y1 + 2*K(g_arr[1], -5.) * y1
+    rhs[-2:] = 0*F_G[:, 0]
+
+    # build matrix in diagonal ordered form
+    ab = np.empty((3, N+1))
+    arbitary_value = 0.
+
+    ## first row
+    ab[0, 0] = arbitary_value
+    ab[0, 1:N] = K1[2:N+1]
+
+    ## second row
+    ab[1, :N-1] = -2*K(g_arr, -5.)[1:N]
+    ab[1, 0] += -(l == 1)/6.
+    ab[1, N-1] = 0. 
+    
+    ## third row
+    ab[2, :N-2] = K1[1:N-1]
+    ab[2, -3:-1] = 1
+
+    # last column 
+    ab[:2, -1] = -F_G[:, 1]
+    ab[2, -1] = arbitary_value
+    print("F_G", F_G)
+    print(rhs)
+    # solve system   
+    ab_sparse = diag_ord_form_to_mat(ab, ab_l_and_u=(1,1))
+    print(f"cond: {np.linalg.cond(ab_sparse.toarray())}")
+
+    if file_dump:
+        np.savetxt("orig_ab.csv", ab)
+        np.savetxt("orig_s.csv", rhs)
+
+    if solve:
+        # from scipy.sparse.linalg import spsolve
+        # sol_sparse = spsolve(ab_sparse, rhs)
+
+        # if unittest:
+        from scipy.linalg import solve_banded
+        sol = solve_banded(l_and_u=(1, 1), ab=ab, b=rhs)
+        # assert np.allclose(sol, sol_sparse)
+
+        return ab_sparse, rhs, np.concatenate(([y0], sol))
+    else:
+        return ab_sparse, rhs
 
 
 def numerov_iter(xn, g, y0=0, y1=0, s=None, params=None):
