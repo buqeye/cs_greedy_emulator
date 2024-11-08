@@ -127,6 +127,115 @@ class AllAtOnceNumerov:
         return norm_residual**2 if squared else norm_residual, lower_bound, upper_bound
 
 
+class EverythingAllAtOnceNumerov:
+    def __init__(self, xn, g, s=None, g_s=None, y0=0., params=None, self_test=True) -> None:
+        # build Numerov matrix
+        ## preliminaries
+        self.xn = xn
+        self.N = len(xn)-1
+        self.h = np.diff(xn)[0]  # assuming an equidistant grid
+        self.step_fac = self.h**2 / 12
+        self.params = params
+        self.g = g
+        self.s = s
+        self.g_s = g_s
+        if g_s is None:
+            self.gn = self.g(xn, self.params)
+            self.sn = np.zeros_like(self.gn) if s is None else s(xn, self.params)
+        else:
+            self.gn, self.sn = self.g_s(xn, params)
+            self.g = self.s = None
+        self.n_theta = self.gn.shape[1]
+        self.step_fac = self.h**2 /12
+        self.y0 = y0
+
+        # construct banded (!) matrix
+        self.A_l_and_u = 1, 1
+        self.A_bandwidth = sum(self.A_l_and_u)+1
+
+        from RseSolver import free_solutions_F_G
+        p = params["scattExp"].p
+        l = params["scattExp"].l
+
+        # build rhs vector s
+        rhs = np.zeros((self.n_theta,self.N+1))
+        rhs[:,:-2] = self.step_fac * np.array([self.sn[n,:] 
+                                               + 10*self.sn[n-1,:] 
+                                               + self.sn[n-2,:] for n in range(2, self.N+1)]).T
+        F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
+        rhs[0,-2:] = F_G[:, 0].T
+        self.S_tensor = rhs
+
+        # build matrix in diagonal ordered form
+        ab = np.zeros((self.n_theta, 3, self.N+1))
+        arbitary_value = 0.
+
+        ## first row
+        ab[:, 0, 0] = arbitary_value  # for completeness
+        ab[0, 0, 1:self.N] = 1.
+        ab[:, 0, 1:self.N] += self.step_fac * self.gn[2:self.N+1, :].T
+
+        ## second row
+        ab[:, 1, :self.N-1] = 10.* self.step_fac * self.gn[1:self.N,:].T
+        ab[0, 1, :self.N-1] += -2
+        ab[0, 1, 0] += -(l == 1)/6.
+        ab[:, 1, self.N-1] = 0. 
+        
+        ## third row
+        ab[:, 2, :self.N-2] = self.step_fac * self.gn[1:self.N-1,:].T
+        ab[0, 2, :-1] += 1.
+
+        ## last column 
+        ab[0, :2, -1] = -F_G[:, 1]
+        ab[:, 2, -1] = arbitary_value  # for completeness
+        
+        self.Abar_tensor = ab
+
+    @property
+    def A_tensor(self):
+        mask = np.outer([1., 10., 1.], np.ones(self.N+1))
+        mask[:,-2:] = 0.
+        mat = spdiags(mask, diags=(-1,0,1)).toarray()
+        tmp = self.step_fac * np.einsum("ij,ja->aij", mat, self.gn[1:,:], optimize=True)
+        tmp[0, ...] += diag_ord_form_to_mat(np.outer(np.array([1, -2, 1]), np.ones(self.N-1)), 
+                                            ab_l_and_u=self.A_l_and_u, toarray=True)
+        return mask
+
+
+    def get_linear_system(self, theta, ret_diag_form=True, file_dump=False):
+        A = np.tensordot(theta, self.Abar_tensor, axes=1)
+        if not ret_diag_form:
+            A = diag_ord_form_to_mat(A, ab_l_and_u=self.A_l_and_u, toarray=True)
+        s = np.tensordot(theta, self.S_tensor, axes=1) #  @ theta
+        if file_dump:
+            np.savetxt("class_A.csv", A)
+            np.savetxt("class_s.csv", s)
+        return A, s
+
+    def solve(self, thetas):
+        thetas = np.asarray(thetas)
+        ret = []
+        for theta in thetas:
+            A_banded, s = self.get_linear_system(theta)
+            sol = solve_banded(l_and_u=self.A_l_and_u, ab=A_banded, b=s)
+            ret.append(np.concatenate([self.y0], sol))
+        return np.array(ret).T
+    
+    def residuals(self, xtilde, theta, squared=True, calc_error_bounds=False):
+        A, s = self.get_linear_system(theta, ret_diag_form=False)
+        # A = diag_ord_form_to_mat(A_banded, ab_l_and_u=self.A_l_and_u, toarray=True)
+        residual = s - A @ xtilde
+        norm_residual = np.linalg.norm(residual)
+        lower_bound = None 
+        upper_bound = None
+        if calc_error_bounds:
+            svals = np.linalg.svd(A, compute_uv=False)
+            lower_bound = norm_residual / svals[0]  # sval_lm
+            upper_bound = norm_residual / svals[-1]  # sval_sm
+            assert lower_bound <= upper_bound, "lower bound has to be <= upper bound"
+        return norm_residual**2 if squared else norm_residual, lower_bound, upper_bound
+
+
 
 def numerov(xn, g, y0, y1, s=None, solve=True, unittest=False, params=None, file_dump=False):
     """
@@ -196,6 +305,7 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     N = len(xn) - 1
     h = np.diff(xn)[0]
 
+
     def K(gn, xi=1):
         return 1. + xi * h**2 / 12 * gn
     
@@ -210,7 +320,7 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     rhs = np.empty(N+1)
     rhs[:-2] = h**2 /12 * np.array([s_arr[n] + 10*s_arr[n-1] + s_arr[n-2] for n in range(2, N+1)])
     # rhs[0] += ((l == 1)/6.) * y1 + 2*K(g_arr[1], -5.) * y1
-    rhs[-2:] = 0*F_G[:, 0]
+    rhs[-2:] = F_G[:, 0]
 
     # build matrix in diagonal ordered form
     ab = np.empty((3, N+1))
@@ -232,8 +342,8 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     # last column 
     ab[:2, -1] = -F_G[:, 1]
     ab[2, -1] = arbitary_value
-    print("F_G", F_G)
-    print(rhs)
+    # print("F_G", F_G)
+    # print(rhs)
     # solve system   
     ab_sparse = diag_ord_form_to_mat(ab, ab_l_and_u=(1,1))
     print(f"cond: {np.linalg.cond(ab_sparse.toarray())}")
@@ -241,7 +351,7 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     if file_dump:
         np.savetxt("orig_ab.csv", ab)
         np.savetxt("orig_s.csv", rhs)
-
+    print(ab)
     if solve:
         # from scipy.sparse.linalg import spsolve
         # sol_sparse = spsolve(ab_sparse, rhs)
@@ -251,9 +361,9 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
         sol = solve_banded(l_and_u=(1, 1), ab=ab, b=rhs)
         # assert np.allclose(sol, sol_sparse)
 
-        return ab_sparse, rhs, np.concatenate(([y0], sol))
+        return ab_sparse, ab, rhs, np.concatenate(([y0], sol))
     else:
-        return ab_sparse, rhs
+        return ab_sparse, ab, rhs
 
 
 def numerov_iter(xn, g, y0=0, y1=0, s=None, params=None):
