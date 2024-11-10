@@ -263,7 +263,9 @@ class RseSolver:
         self.grid = grid
         self.inhomogeneous = inhomogeneous
         self.u_lbl = "chi" if inhomogeneous else "u"
-        self.rseParams = {"grid": grid, "scattExp": scattExp, "potential": scattExp.potential, "inhomogeneous": inhomogeneous}
+        self.rseParams = {"grid": grid, "scattExp": scattExp, 
+                          "potential": scattExp.potential, 
+                          "inhomogeneous": inhomogeneous}
         
         # setup Numerov solver (for affine parameter dependences)
         from Numerov import AllAtOnceNumerov
@@ -409,7 +411,10 @@ def g_s(r, params):
     pot = potential.eval(r, lecs)
     centrifugal = -l * (l + 1) / r ** 2. if l > 0 else 0.
     g_arr = centrifugal - (2. * mu) * (pot - E)
-    s_arr = pot * spherical_jn(l, p*r) * p*r * (2. * mu) 
+    if params["inhomogeneous"]:
+        s_arr = pot * spherical_jn(l, p*r) * p*r * (2. * mu) 
+    else:
+        s_arr = np.zeros_like(g_arr)
     return g_arr, s_arr
 
 def g_s_affine(r, params):
