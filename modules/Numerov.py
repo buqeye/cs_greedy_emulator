@@ -128,7 +128,7 @@ class AllAtOnceNumerov:
 
 
 class EverythingAllAtOnceNumerov:
-    def __init__(self, xn, g, s=None, g_s=None, y0=0., params=None, self_test=True) -> None:
+    def __init__(self, xn, g, s=None, g_s=None, y0=0., params=None, self_test=False) -> None:
         # build Numerov matrix
         ## preliminaries
         self.xn = xn
@@ -156,15 +156,23 @@ class EverythingAllAtOnceNumerov:
         from RseSolver import free_solutions_F_G
         p = params["scattExp"].p
         l = params["scattExp"].l
+        F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
 
         # build rhs vector s
-        rhs = np.zeros((self.n_theta,self.N+1))
-        rhs[:,:-2] = self.step_fac * np.array([self.sn[n,:] 
-                                               + 10*self.sn[n-1,:] 
-                                               + self.sn[n-2,:] for n in range(2, self.N+1)]).T
-        F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
-        rhs[0,-2:] = F_G[:, 0].T
-        self.S_tensor = rhs
+        mask = np.outer([1., 10., 1.], np.ones(self.N+1))
+        mat = spdiags(mask, diags=(0,1,2), m=self.N+1, n=self.N+1)
+        mat = self.step_fac * mat @ self.sn 
+        mat[-2:, :] = 0.
+        mat[-2:, 0] = 0. if params["inhomogeneous"] else F_G[:, 0]
+        self.S_tensor = mat.T
+
+        if self_test:
+            rhs = np.zeros((self.n_theta,self.N+1))
+            rhs[:,:-2] = self.step_fac * np.array([self.sn[n,:] 
+                                                + 10*self.sn[n-1,:] 
+                                                + self.sn[n-2,:] for n in range(2, self.N+1)]).T
+            rhs[0,-2:] = 0. if params["inhomogeneous"] else F_G[:, 0].T
+            assert np.allclose(self.S_tensor, rhs, atol=1e-14, rtol=0.), "inconsistent S_tensor"
 
         # build matrix in diagonal ordered form
         ab = np.zeros((self.n_theta, 3, self.N+1))
@@ -191,16 +199,11 @@ class EverythingAllAtOnceNumerov:
         
         self.Abar_tensor = ab
 
-    @property
-    def A_tensor(self):
-        mask = np.outer([1., 10., 1.], np.ones(self.N+1))
-        mask[:,-2:] = 0.
-        mat = spdiags(mask, diags=(-1,0,1)).toarray()
-        tmp = self.step_fac * np.einsum("ij,ja->aij", mat, self.gn[1:,:], optimize=True)
-        tmp[0, ...] += diag_ord_form_to_mat(np.outer(np.array([1, -2, 1]), np.ones(self.N-1)), 
-                                            ab_l_and_u=self.A_l_and_u, toarray=True)
-        return mask
-
+        # build sparse A_tensor
+        self.A_tensor = np.zeros((self.n_theta, self.N+1, self.N+1))
+        for a in range(self.n_theta):
+            self.A_tensor[a, :, :] = spdiags(self.Abar_tensor[a, :, :], diags=(1,0,-1),
+                                             m=self.N+1, n=self.N+1).toarray()
 
     def get_linear_system(self, theta, ret_diag_form=True, file_dump=False):
         A = np.tensordot(theta, self.Abar_tensor, axes=1)
@@ -218,22 +221,21 @@ class EverythingAllAtOnceNumerov:
         for theta in thetas:
             A_banded, s = self.get_linear_system(theta)
             sol = solve_banded(l_and_u=self.A_l_and_u, ab=A_banded, b=s)
-            ret.append(np.concatenate([self.y0], sol))
+            ret.append(np.concatenate(([self.y0], sol)))
         return np.array(ret).T
     
-    def residuals(self, xtilde, theta, squared=True, calc_error_bounds=False):
+    def residuals(self, xtilde, theta, squared=False, calc_error_bounds=False):
         A, s = self.get_linear_system(theta, ret_diag_form=False)
-        # A = diag_ord_form_to_mat(A_banded, ab_l_and_u=self.A_l_and_u, toarray=True)
         residual = s - A @ xtilde
         norm_residual = np.linalg.norm(residual)
         lower_bound = None 
         upper_bound = None
-        if calc_error_bounds:
+        if calc_error_bounds:  # expensive
             svals = np.linalg.svd(A, compute_uv=False)
             lower_bound = norm_residual / svals[0]  # sval_lm
             upper_bound = norm_residual / svals[-1]  # sval_sm
             assert lower_bound <= upper_bound, "lower bound has to be <= upper bound"
-        return norm_residual**2 if squared else norm_residual, lower_bound, upper_bound
+        return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
 
@@ -320,7 +322,7 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     rhs = np.empty(N+1)
     rhs[:-2] = h**2 /12 * np.array([s_arr[n] + 10*s_arr[n-1] + s_arr[n-2] for n in range(2, N+1)])
     # rhs[0] += ((l == 1)/6.) * y1 + 2*K(g_arr[1], -5.) * y1
-    rhs[-2:] = F_G[:, 0]
+    rhs[-2:] = 0. if params["inhomogeneous"] else F_G[:, 0]
 
     # build matrix in diagonal ordered form
     ab = np.empty((3, N+1))
@@ -346,12 +348,12 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     # print(rhs)
     # solve system   
     ab_sparse = diag_ord_form_to_mat(ab, ab_l_and_u=(1,1))
-    print(f"cond: {np.linalg.cond(ab_sparse.toarray())}")
+    # print(f"cond: {np.linalg.cond(ab_sparse.toarray())}")
 
     if file_dump:
         np.savetxt("orig_ab.csv", ab)
         np.savetxt("orig_s.csv", rhs)
-    print(ab)
+
     if solve:
         # from scipy.sparse.linalg import spsolve
         # sol_sparse = spsolve(ab_sparse, rhs)
