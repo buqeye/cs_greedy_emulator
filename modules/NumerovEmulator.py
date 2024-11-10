@@ -1,8 +1,9 @@
 from RseSolver import RseSolver
 import numpy as np
 from Grid import Grid
-from Numerov import numerov, AllAtOnceNumerov
-from scipy.linalg import orth
+from Numerov import numerov, AllAtOnceNumerov, EverythingAllAtOnceNumerov
+from scipy.linalg import orth, qr, qr_insert, LinAlgError
+
 
 
 class AffineGROM:
@@ -26,13 +27,23 @@ class AffineGROM:
         self.mode = mode
         self.greedy_logging = None
         self.seed = seed
+        self.greedy_logging = []
 
         # FOM solver (all-at-once Numerov)
-        self.rse_solver = RseSolver(scattExp=self.scattExp, grid=self.grid, inhomogeneous=True)
-        self.numerov_solver = self.rse_solver.numerov_solver
+        rseParams = {"grid": grid, 
+                     "scattExp": scattExp, 
+                     "potential": scattExp.potential, 
+                     "inhomogeneous": True
+                     }
+        from RseSolver import g_s_affine
+        self.y0 = 0.
+        self.numerov_solver = EverythingAllAtOnceNumerov(self.grid.points, 
+                                                         g=None, g_s=g_s_affine, 
+                                                         y0=self.y0, params=rseParams)
         
         # training and greedy algorithm if requested
         self.training(init_snapshot_lecs)
+
         if self.approach == "greedy":
             self.greedy_algorithm()
  
@@ -58,7 +69,6 @@ class AffineGROM:
         else:
             self.lec_all_samples = snapshot_lecs
             self.num_snapshots_init = len(self.lec_all_samples)
-            self.num_snapshots_max = self.num_snapshots_init
 
         # initial snapshot selection (random)
         rng = np.random.default_rng(seed=self.seed)
@@ -67,19 +77,36 @@ class AffineGROM:
         
         # building snapshot matrix for chi, not Psi
         init_lecs = np.take(a=self.lec_all_samples, indices=list(self.lec_snapshots_idxs), axis=0)
-        self.snapshot_matrix, self.snapshot_Lvec = self.simulate(init_lecs)
-        self.snapshot_matrix2 = self.rse_solver.solve(lecList=init_lecs, method="Numerov_affine", 
-                                                      asympParam="K", matching=True, reduced_output=False)
+        self.snapshot_matrix = self.simulate(init_lecs)
 
         self.all_snapshot_idxs = set(range(len(self.lec_all_samples)))
 
-        # POD snapshot matrix if requested
+        # choose between snapshot approaches 
+        # (requires updating the offline stage, see below)
+        self.fom_solutions = np.copy(self.snapshot_matrix)
         if self.approach == "pod":
             self.apply_pod(update_offline_stage=False)
+        elif self.approach == "greedy":
+            self.apply_orthonormalization(update_offline_stage=False)
+            self.greedy_algorithm()
+        elif self.approach == "orth":
+            self.apply_orthonormalization(update_offline_stage=False)
+        elif self.approach is None: 
+            print(f"Snapshot matrix not orthonormalized. Consider using `approach='orth'`")
+        else:
+            raise NotADirectoryError(f"Approach '{self.approach}' is unknown.")
 
         # prestore arrays for efficient offline/online decomposition
         self.update_offline_stage()
-    
+
+    def apply_orthonormalization(self, update_offline_stage=True):
+        q, r = qr(self.snapshot_matrix, mode='economic')
+        self.snapshot_matrix = q
+        self.snapshot_matrix_r = r
+
+        if update_offline_stage:
+            self.update_offline_stage()
+
     @staticmethod
     def truncated_svd(matrix, rcond=None):
         # modified from scipy's `orth()` function:
@@ -94,12 +121,12 @@ class AffineGROM:
         Q = u[:, :num]
         return Q, s[:num], vh.conjugate().transpose()[:, :num]
 
-    def apply_pod(self, update_offline_stage=False):
+    def apply_pod(self, update_offline_stage=True):
         prev_rank = self.snapshot_matrix.shape[1]
+        # calling `sp.linalg.orth()`` would be enough here, but we might want to study different SVD truncations in the future
         Ur, S, Vr = self.truncated_svd(self.snapshot_matrix, rcond=self.pod_rcond)
-        self.snapshot_Lvec = np.linalg.multi_dot((self.snapshot_Lvec, Vr, np.diag(1./S))) #TODO: could be written without constructing the diag matrix
         self.snapshot_matrix = Ur
-        
+
         curr_rank = self.snapshot_matrix.shape[1]
         compression_rate = 1. - curr_rank / prev_rank
         print(f"using {curr_rank} out of {prev_rank} POD modes in total: compression rate is {compression_rate*100:.1f} %")
@@ -108,110 +135,93 @@ class AffineGROM:
             self.update_offline_stage()
 
     def update_offline_stage(self):
-        self.X_red = self.snapshot_matrix[2:,2:]
-        X_dagger = self.X_red.conjugate().T
+        X_red = self.snapshot_matrix[1:,:]
+        X_dagger = X_red.conjugate().T
         A_tensor = self.numerov_solver.A_tensor
         S_tensor = self.numerov_solver.S_tensor
 
         # emulator equations: reduction and projection
-        self.A_tilde = X_dagger @ A_tensor @ self.X_red
+        self.A_tilde = X_dagger @ A_tensor @ X_red
         self.s_tilde = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
 
         # prestore tensors for error estimates
-        einsum_args = dict(optimize=True, dtype=np.longdouble)
+        einsum_args = dict(optimize="greedy", dtype=np.longdouble)
         self.error_term1 = np.einsum("ik,alk,blm,mj->ijab", 
-                                      X_dagger, A_tensor.conjugate(), A_tensor, self.X_red, **einsum_args) 
-        self.error_term2 = np.einsum("bk,aki,ij->baj", S_tensor.conjugate(), A_tensor, self.X_red, **einsum_args)
-        self.error_term3 = S_tensor.conjugate().T @ S_tensor
+                                      X_dagger, A_tensor.conjugate(), A_tensor, X_red, **einsum_args) 
+        self.error_term2 = np.einsum("bk,aki,ij->baj", S_tensor.conjugate(), A_tensor, X_red, **einsum_args)
+        self.error_term3 = S_tensor.conjugate() @ S_tensor.T
+        # Note: when adding snapshots to the emulator basis, one does not need to recompute all tensors again,
+        # rather one can update them for computational efficiency. Since this update only occurs in the offline 
+        # stage of the emulator, we keep it in this proof-of-principle work simple and compute the tensors from scratch
 
     def simulate(self, lecList):
-        return self.rse_solver.solve(lecList=lecList, method="Numerov_affine", 
-                                     asympParam="K", matching=True, reduced_output=True)
+        return self.numerov_solver.solve(lecList)
 
-    def emulate(self, lecList, estimate_error=False, errors_squared=True,
-                calc_error_bounds=False, cond_number_threshold=None, self_test=False):
-        ret = []
-        errors = []
-        error_bounds = []
-
+    def emulate(self, lecList, estimate_norm_residual=False, 
+                calc_error_bounds=False, squared_residuals=False,
+                cond_number_threshold=None, self_test=True):
+        coeffs_all = []
         for lecs in lecList:
-            # reconstruct linear system
-            A_tilde = np.tensordot(lecs, self.A_tilde, axis=1)
-            s_tilde = np.tensordot(lecs, self.s_tilde, axis=1)
+            # reconstruct linear system    
+            A_tilde = np.tensordot(lecs, self.A_tilde, axes=1)
+            s_tilde = np.tensordot(lecs, self.s_tilde, axes=1)
 
             # solve linear system and emulate
             if cond_number_threshold is not None:
                 cond_number = np.linalg.cond(A_tilde)
                 if cond_number > cond_number_threshold:
-                    print(f"Warning: condition number is large (aff)! {cond_number:.8e}")
-            coeffs = np.linalg.solve(A_tilde, s_tilde)
-            emulated_chi = self.X_red @ coeffs
+                    print(f"Warning: condition number is above threshold (aff)! {cond_number:.8e}")
+            coeffs_curr = np.linalg.solve(A_tilde, s_tilde)
+            coeffs_all.append(coeffs_curr)
+            # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
+        coeffs_all = np.column_stack(coeffs_all)
+        emulated_sols = self.snapshot_matrix @ coeffs_all
             
-            # estimate error (proportional to the real error at best)
-            error, lower_bound, upper_bound = self.numerov_solver.residuals(emulated_chi, lecs, squared=errors_squared, calc_error_bounds=True)
-            # error = self.estimate_error(lecs, coeffs, squared=errors_squared) if estimate_error else None
-            # lower_bound = upper_bound = None
-            errors.append(error)
-            error_bounds.append((lower_bound, upper_bound))
+        if estimate_norm_residual:
+            norm_residuals = np.empty_like(lecList)
+            error_bounds = []
+            for i in range(len(norm_residuals)):
+                norm_residuals[i] = self.reconstruct_norm_residual(lecs, coeffs_all[:,i], squared=squared_residuals)
 
-            # check for internal consistency if requested
-            if self_test and estimate_error is True:
-                # reduced linear system
-                tmp = self.numerov_solver.A_const_theta_dense
-                A = tmp[0] + tmp[1] @ lecs
-                AA_red = snapshot_matrix.transpose() @ A @ snapshot_matrix
-                A_banded, s, y1_y2a = self.numerov_solver.get_linear_system(lecs)
-                assert np.allclose(AA_red, A_red), "projected matrices don't match"
-                assert np.allclose(snapshot_matrix.transpose() @ s, s_red), "projected rhs vectors don't match"
+            if self_test or calc_error_bounds:
+                norm_residuals_FOM = np.empty_like(lecList)
+                for ilecs, lecs in enumerate(lecList):
+                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[1:,ilecs], lecs, 
+                                                                                      squared=squared_residuals, 
+                                                                                      calc_error_bounds=calc_error_bounds)
+                    error_bounds.append(bounds)  # may be None
+                error_bounds = np.array(error_bounds)
 
-                # check that brute-force and affine error estimate match
-                residual_ref = (A @ emulated_chi) - s
-                error2a = residual_ref.T @ residual_ref
-                error2a_comp = np.zeros(4, dtype=np.longdouble)
-                error2a_comp[0] = (A @ emulated_chi).T.conjugate() @ (A @ emulated_chi) 
-                error2a_comp[1] = (-s).T.conjugate() @ (A @ emulated_chi)
-                error2a_comp[2] = (A @ emulated_chi).T.conjugate() @ (-s)
-                error2a_comp[3] = s.T.conjugate() @ s
-                assert np.allclose(error, error2a, rtol=0, atol=1e-14), "affine and brute-force error calculation don't match"
-                error2n = self.numerov_solver.residuals(emulated_chi, lecs, norm=True)
-                assert np.allclose(error2n, error, rtol=0, atol=1e-14), "affine and brute-force error calculation don't match (from AffineNumerovSolver)"
+                if self_test:
+                    max_diff = np.max(np.abs(norm_residuals - norm_residuals_FOM))
+                    # print("max_diff", max_diff)
+                    assert np.allclose(max_diff, 0, atol=1e-10, rtol=0.), "something's wrong with the reconstructed residual; max diff: {max_diff}"
 
-                # for elem in error2a_comp:
-                #     print("\terror terms:", elem)
-                # print(np.sum(error2a_comp), error2a, np.sum(error2a_comp) - error2a)
-                # error2 = (A @ emulated_chi).T.conjugate() @ (A @ emulated_chi)
-                # print("error (ref)", error2a)
+            return emulated_sols, norm_residuals, error_bounds    
+        else:
+            return emulated_sols
 
-            ret.append(np.concatenate(([self.numerov_solver.y0], y1_y2, emulated_chi)))
-
-        fomChi = self.simulate(lecList)
-        errors_fom = np.array([np.linalg.norm(fomChi[:,i]- ret[i]) for i in range(len(lecList))])
-        return ret, np.array(errors), np.array(error_bounds), fomChi, errors_fom
-
-    def estimate_error(self, lecs, coeffs, squared=False):
-        lecs_H = lecs.conjugate().T   # we assume below that `lecs` are real
+    def reconstruct_norm_residual(self, lecs, coeffs, squared=False):
+        lecs_H = lecs.conjugate().T
         coeffs_H = coeffs.conjugate().T
-        S_const, y1_y2 = self.numerov_solver.get_S_const(lecs)
-        S_const_H = S_const.conjugate().T
-        einsum_args = dict(optimize=True, dtype=np.longdouble)
+
+        einsum_args = dict(optimize="greedy", dtype=np.longdouble)
 
         # first term (x^\dagger A^\dagger A x)
-        res = np.zeros(3, dtype=np.longdouble)
-        res[0] = np.einsum("i,ijab,a,b,j->", coeffs_H, self.error2_1st_3, lecs_H, lecs, coeffs, **einsum_args)
+        res = np.empty(3, dtype=np.longdouble)
+        res[0] = np.einsum("i,ijab,a,b,j->", coeffs_H, self.error_term1, lecs_H, lecs, coeffs, **einsum_args)
         ## second term (s^dagger A x)
-        res[1] = -2.*np.real(np.einsum("baj,a,b,j->", self.error2_2nd_4, lecs, lecs_H, coeffs, **einsum_args))
+        res[1] = -2.*np.real(np.einsum("baj,a,b,j->", self.error_term2, lecs, lecs_H, coeffs, **einsum_args))
         ## third term (s^\dagger s)
-        res[2] = np.linalg.multi_dot((lecs_H, self.error2_3rd_3, lecs))
+        res[2] = lecs_H @ self.error_term3 @ lecs  # dimensions probably too small for multidot to be more efficient
 
         # sum the contributions and return
-        total = np.max(((0., np.sum(res))))  # prevent eps^2 < 0 due to round off errors
+        total = np.max(((0., np.sum(res))))  # prevent eps^2 < 0 due to round-off errors and ill-conditioning
         return total if squared else np.sqrt(total)
 
-    def greedy_algorithm(self):
-        self.greedy_logging = []
-        current_est_mean_error = np.inf
-
+    def greedy_algorithm(self, logging=True):
         print(f"greedily improving the snapshot basis:")
+        current_mean_norm_residuals = np.inf
         for niter in range(self.greedy_max_iter):
             print(f"\titeration #{niter+1} of max {self.greedy_max_iter}:")
             
@@ -222,56 +232,89 @@ class AffineGROM:
             # determine snapshots at which to compute the errors
             emulate_snapshot_idxs = list(self.all_snapshot_idxs) if self.mode == "linear" else candidate_snapshot_idxs.copy()
             emulate_snapshots = np.take(a=self.lec_all_samples, indices=emulate_snapshot_idxs, axis=0)
-            # in the case of "linear", we want to make error plots, so we emulate here all snapshots, 
+            # in the case of the "linear" mode, we want to make error plots, so we emulate here all snapshots, 
             # including the ones we've already considered in the greedy iteration.
     
-            # emulate candidate snapshots
-            romChis, estErrors, estErrBounds, fomChis, realErrors = self.emulate(emulate_snapshots, estimate_error=True, 
-                                                                                 errors_squared=False, calc_error_bounds=True)  
-            self.greedy_logging.append([self.lec_snapshots_idxs.copy(), estErrors, estErrBounds, realErrors])
-            # TODO: the final ROM would not compute the FOM results (just for checking/benchmarking for now)
+            # emulate candidate snapshots           
+            emulated_sols, norm_residuals, error_bounds = self.emulate(emulate_snapshots, estimate_norm_residual=True, 
+                                                                       calc_error_bounds=False, squared_residuals=False,
+                                                                       cond_number_threshold=None, self_test=False)
+
+            if logging:
+                # in practice, ROM will not compute the FOM results (just for checking/benchmarking)
+                fom_sols = self.simulate(emulate_snapshots)
+                norm_residuals_exact = np.linalg(emulated_sols - fom_sols)
+                self.greedy_logging.append([self.lec_snapshots_idxs.copy(), 
+                                            fom_sols, emulated_sols, 
+                                            norm_residuals, norm_residuals_exact, error_bounds])
 
             # check that the estimated mean error decreases
-            mean_est_err = np.mean(estErrors)
-            if mean_est_err > current_est_mean_error:
-                print(f"\t\tWarning: estimated mean error has increased")
-            current_est_mean_error = mean_est_err
+            mean_norm_residuals = np.mean(norm_residuals)
+            if mean_norm_residuals > current_mean_norm_residuals:
+                print(f"\t\tWarning: estimated mean error has increased.")
+            current_mean_norm_residuals = mean_norm_residuals
 
             # select the candidate snapshot with maximum (estimated) error
-            est_err_candidate_snapshots = np.take(a=estErrors, indices=candidate_snapshot_idxs, axis=0) if self.mode == "linear" else estErrors
+            est_err_candidate_snapshots = np.take(a=norm_residuals, 
+                                                  indices=candidate_snapshot_idxs, axis=0) if self.mode == "linear" else norm_residuals
             arg_max_err_est = np.argmax(est_err_candidate_snapshots)
             max_err_est = est_err_candidate_snapshots[arg_max_err_est]
             snapshot_idx_max_err_est = candidate_snapshot_idxs[arg_max_err_est]
-            # another strategy could be to select more than one candidate snapshot to be added to the basis;
-            # this could be done using, e.g., `np.argsort()`
 
-            # check whether the error estimator found indeed the snapshot with maximum (estiamted) error # TODO: final ROM won't do that
-            real_err_candidate_snapshots = np.take(a=realErrors, indices=candidate_snapshot_idxs, axis=0) if self.mode == "linear" else realErrors
-            arg_max_err_real = np.argmax(real_err_candidate_snapshots)
-            max_err_real = real_err_candidate_snapshots[arg_max_err_est]
+            if logging:
+                # check whether the error estimator found indeed the snapshot with maximum (estiamted) error
+                real_err_candidate_snapshots = np.take(a=norm_residuals_exact, 
+                                                       indices=candidate_snapshot_idxs, axis=0) if self.mode == "linear" else norm_residuals_exact
+                arg_max_err_real = np.argmax(real_err_candidate_snapshots)
+                max_err_real = real_err_candidate_snapshots[arg_max_err_est]
 
-            if arg_max_err_est != arg_max_err_real:
-                print(f"\t\tWarning: estimated max error doesn't match real max error: arg {arg_max_err_est} vs {arg_max_err_real}")
-            print(f"\t\testimated max error: {max_err_est:.3e} | real max error: {max_err_real:.3e}")
+                if arg_max_err_est != arg_max_err_real:
+                    print(f"\t\tWarning: estimated max error doesn't match real max error: arg {arg_max_err_est} vs {arg_max_err_real}")
+                print(f"\t\testimated max error: {max_err_est:.3e} | real max error: {max_err_real:.3e}")
                         
-            # update snapshot matrix by adding new FOM solution
-            snapshot_matrix_prev_rank = self.snapshot_matrix.shape[1]
-            self.snapshot_matrix = np.hstack((self.snapshot_matrix, np.atleast_2d(fomChis[:, snapshot_idx_max_err_est]).T))
-            # TODO: using `newaxis` in the second argument might be more readable: fomChis[arg_max_err_real][:, np.newaxis]
+            # perform FOM calculation at the location of max estimated error
+            to_be_added_fom_sol = self.simulate(emulate_snapshots)
+            
+            if logging:
+                assert np.allclose(fom_sols[:, snapshot_idx_max_err_est], 
+                                   to_be_added_fom_sol, atol=1e-14, rtol=0.), "trying to add wrong FOM solution to basis?"
+            
+            # calibrate error estimator
+            # TODO
 
-            # update interal records of snapshots
+            # update snapshot matrix by adding new FOM solution and interal records
             print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.lec_snapshots_idxs}")
+            self.add_fom_solution_to_basis(to_be_added_fom_sol)
             self.lec_snapshots_idxs.add(snapshot_idx_max_err_est)
 
-            # if POD enabled, re-orthogonalize the new snapshot matrix
-            if self.pod:
-                self.snapshot_matrix = orth(self.snapshot_matrix, rcond=self.rcond)
-                snapshot_matrix_curr_rank = self.snapshot_matrix.shape[1]
-                if snapshot_matrix_curr_rank != snapshot_matrix_prev_rank + 1:
-                    print("\t\tadded snapshot got orthogonalized away")
-                self.update_offline_stage()
-
             # TODO: break condition
+
+    def add_fom_solution_to_basis(self, fom_sol):
+        self.fom_solutions = np.column_stack((self.fom_solutions, fom_sol))
+        if self.approach == "pod":
+            self.snapshot_matrix = np.copy(self.fom_solutions)
+            self.apply_pod(update_offline_stage=False)
+            # one could do here an incremental SVD; since we do not explore
+            # updating the snapshot matrix after POD, we perform here a
+            # full truncated SVD again only for completeness
+        elif self.approach in ("orth", "greedy"):
+            try:
+                self.snapshot_matrix, self.snapshot_matrix_r = qr_insert(Q=self.snapshot_matrix, 
+                                                                         R=self.snapshot_matrix_r, 
+                                                                         u=fom_sol, k=-1, 
+                                                                         which='col', rcond=None)
+                # `qr_insert` will raise a `LinAlgError` if one of the columns of u lies in the span of Q,
+                # which is measured using `rcond`; if that is the case, we perform a QR decomposition
+                # on the updated snapshot matrix, which results in an orthonormal basis  with the requested size
+            except LinAlgError:
+                self.snapshot_matrix = np.copy(self.fom_solutions)
+                self.apply_orthonormalization(update_offline_stage=False)
+        elif self.approach is None: 
+            self.snapshot_matrix = np.copy(self.fom_solutions)
+        else:
+            raise NotADirectoryError(f"Approach '{self.approach}' is unknown.")
+
+        self.update_offline_stage()
 
 
 class AffineNumerovEmulator:
