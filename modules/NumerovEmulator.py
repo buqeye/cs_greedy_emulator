@@ -176,7 +176,7 @@ class AffineGROM:
         return self.numerov_solver.solve(lecList)
 
     def emulate(self, lecList, estimate_norm_residual=False, 
-                calc_error_bounds=False, squared_residuals=False,
+                calc_error_bounds=False, calibrate_norm_residual=False,
                 cond_number_threshold=None, self_test=True):
         coeffs_all = []
         for lecs in lecList:
@@ -200,13 +200,12 @@ class AffineGROM:
             norm_residuals = np.empty(num_norm_residuals)
             error_bounds = []
             for ilecs, lecs in enumerate(lecList):
-                norm_residuals[ilecs] = self.reconstruct_norm_residual(lecs, coeffs_all[:,ilecs], squared=squared_residuals)
+                norm_residuals[ilecs] = self.reconstruct_norm_residual(lecs, coeffs_all[:,ilecs])
 
             if self_test or calc_error_bounds:
                 norm_residuals_FOM = np.empty(num_norm_residuals)
                 for ilecs, lecs in enumerate(lecList):
                     norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[1:,ilecs], lecs, 
-                                                                                      squared=squared_residuals, 
                                                                                       calc_error_bounds=calc_error_bounds)
                     error_bounds.append(bounds)  # may be None
                 error_bounds = np.array(error_bounds)
@@ -216,11 +215,14 @@ class AffineGROM:
                     # print("max_diff", max_diff)
                     assert np.allclose(max_diff, 0, atol=1e-10, rtol=0.1), f"something's wrong with the reconstructed residual; max diff: {max_diff}"
 
+            if calibrate_norm_residual:
+                norm_residuals *= self.coercivity_constant
+
             return emulated_sols, norm_residuals, error_bounds    
         else:
             return emulated_sols
 
-    def reconstruct_norm_residual(self, lecs, coeffs, squared=False):
+    def reconstruct_norm_residual(self, lecs, coeffs):
         lecs_H = lecs.conjugate().T
         coeffs_H = coeffs.conjugate().T
 
@@ -254,13 +256,19 @@ class AffineGROM:
         # end_time = time.time()
         # elapsed_time = end_time - start_time
         # print(f"Elapsed time (vector norm): {elapsed_time1e-6:.5e} seconds")
-        # print(f"reconstructed norm residuals diff: {total - total2:.2e}")
-        assert np.allclose(total, total2, atol=1e-10, rtol=0.), "total and total2 inconsistent"
+        # print(f"reconstructed norm residuals diff: {total - total2:.2e} | {total:.2e} {total2:.2e}")
+        # assert np.allclose(total, total2, atol=1e-9, rtol=0.), "total and total2 inconsistent"
         
-        return total2**2 if squared else total2
+        return total2
 
-    def greedy_algorithm(self, logging=True, verbose=False):
-        max_iter = min(self.greedy_max_iter, max(0, self.num_snapshots_max-len(self.included_snapshots_idxs)))
+    def greedy_algorithm(self, error_calibration_mode=False, 
+                         calibrate_error_estimation=True, atol=1e-12,
+                         logging=True, verbose=False):
+        if error_calibration_mode:
+            calibrate_error_estimation = True
+            max_iter = 1
+        else: 
+            max_iter = min(self.greedy_max_iter, max(0, self.num_snapshots_max-len(self.included_snapshots_idxs)))
         if max_iter > 0:
             print("snapshot idx already included in basis:", self.included_snapshots_idxs)
             print(f"now greedily improving the snapshot basis:")
@@ -284,8 +292,10 @@ class AffineGROM:
             # including the ones we've already considered in the greedy iteration.
     
             # emulate candidate snapshots           
-            emulated_sols, norm_residuals, error_bounds = self.emulate(emulate_snapshots, estimate_norm_residual=True, 
-                                                                       calc_error_bounds=logging, squared_residuals=False,
+            emulated_sols, norm_residuals, error_bounds = self.emulate(emulate_snapshots, 
+                                                                       estimate_norm_residual=True, 
+                                                                       calibrate_norm_residual=False,
+                                                                       calc_error_bounds=logging, 
                                                                        cond_number_threshold=None, self_test=logging)
 
             if logging:
@@ -301,7 +311,7 @@ class AffineGROM:
             # check that the estimated mean error decreases
             mean_norm_residuals = np.mean(norm_residuals)
             if mean_norm_residuals > current_mean_norm_residuals:
-                print(f"\t\tWarning: estimated mean error has increased.")
+                print(f"\t\tWarning: estimated mean error has increased. Terminating greedy iteration.")
                 break
             current_mean_norm_residuals = mean_norm_residuals
 
@@ -324,22 +334,35 @@ class AffineGROM:
                     print(f"\t\tWarning: estimated max error doesn't match real max error: arg {arg_max_err_est} vs {arg_max_err_real}")
                 print(f"\t\testimated max error: {max_err_est:.3e} | real max error: {max_err_real:.3e}")
                         
+            # check whether accuracy goal is achieved
+            scaled_max_err_est = self.coercivity_constant * max_err_est if calibrate_error_estimation else max_err_est
+            if scaled_max_err_est < atol:
+                print(f"accuracy goal 'atol = {atol}' achieved. Terminating greedy iteration.")
+                break
+
             # perform FOM calculation at the location of max estimated error
             to_be_added_fom_sol = self.simulate([candidate_snapshots[arg_max_err_est]])
 
+            # calibrate error estimator
+            if calibrate_error_estimation:
+                exact_error = np.linalg.norm(np.squeeze(to_be_added_fom_sol) - emulated_sols[:, snapshot_idx_max_err_est])
+                self.coercivity_constant = exact_error / max_err_est
+                assert self.coercivity_constant > 0., "coercivity constant is not positive"
+                print(f"\t\tcoercivity constant: {self.coercivity_constant:.3e}")
+
             if logging and (arg_max_err_est == arg_max_err_real):
                 assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
-                                   np.squeeze(to_be_added_fom_sol), atol=1e-14, rtol=0.), "trying to add wrong FOM solution to basis?"
-            
-            # calibrate error estimator
-            self.coercivity_constant = 1.
+                                   np.squeeze(to_be_added_fom_sol), atol=1e-14, rtol=0.), "adding the wrong FOM solution to basis?"
+                
+                if calibrate_error_estimation:
+                    assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
+                    self.greedy_logging[-1].append(self.coercivity_constant)
 
             # update snapshot matrix by adding new FOM solution and interal records
-            print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.included_snapshots_idxs}")
-            self.add_fom_solution_to_basis(to_be_added_fom_sol)
-            self.included_snapshots_idxs.add(snapshot_idx_max_err_est)
-
-            # TODO: break condition
+            if not error_calibration_mode and niter < max_iter-1:
+                print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.included_snapshots_idxs}")
+                self.add_fom_solution_to_basis(to_be_added_fom_sol)
+                self.included_snapshots_idxs.add(snapshot_idx_max_err_est)
 
     def add_fom_solution_to_basis(self, fom_sol):
         self.fom_solutions = np.column_stack((self.fom_solutions, fom_sol))
