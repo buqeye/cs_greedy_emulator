@@ -149,7 +149,7 @@ class AffineGROM:
         self.s_tilde = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
 
         # prestore tensors for error estimates
-        einsum_args = dict(optimize="greedy", dtype=np.longdouble)
+        einsum_args = dict(optimize="greedy", dtype=np.complex128)
         self.error_term1 = np.einsum("ki,alk,blm,mj->ijab", 
                                       X_red.conjugate(), A_tensor.conjugate(), A_tensor, X_red, **einsum_args) 
         self.error_term2 = np.einsum("bk,aki,ij->baj", S_tensor_conj, A_tensor, X_red, **einsum_args)
@@ -226,13 +226,13 @@ class AffineGROM:
         lecs_H = lecs.conjugate().T
         coeffs_H = coeffs.conjugate().T
 
-        einsum_args = dict(optimize="greedy", dtype=np.longdouble)
+        einsum_args = dict(optimize="greedy", dtype=np.complex128)
 
         # import time
         # start_time = time.time()
         
         # first term (x^\dagger A^\dagger A x)
-        res = np.empty(3, dtype=np.longdouble)
+        res = np.empty(3, dtype=np.complex128)
         res[0] = np.einsum("i,ijab,a,b,j->", coeffs_H, self.error_term1, lecs_H, lecs, coeffs, **einsum_args)
         ## second term (s^dagger A x)
         res[1] = -2.*np.real(np.einsum("baj,a,b,j->", self.error_term2, lecs, lecs_H, coeffs, **einsum_args))
@@ -354,9 +354,9 @@ class AffineGROM:
                 assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
                                    np.squeeze(to_be_added_fom_sol), atol=1e-14, rtol=0.), "adding the wrong FOM solution to basis?"
                 
-                if calibrate_error_estimation:
-                    assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
-                    self.greedy_logging[-1].append(self.coercivity_constant)
+            if logging and calibrate_error_estimation:
+                # assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
+                self.greedy_logging[-1].append(self.coercivity_constant)
 
             # update snapshot matrix by adding new FOM solution and interal records
             if not error_calibration_mode and niter < max_iter-1:

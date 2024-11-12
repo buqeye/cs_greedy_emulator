@@ -157,9 +157,10 @@ class EverythingAllAtOnceNumerov:
         p = params["scattExp"].p
         l = params["scattExp"].l
         F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
+        Hplus = F_G[:, 1] + 1j * F_G[:, 0]  # G + i F
 
         # build rhs vector s
-        mask = np.outer([1., 10., 1.], np.ones(self.N+1))
+        mask = np.outer([1., 10., 1.], np.ones(self.N+1, dtype=np.complex128))
         mat = spdiags(mask, diags=(0,1,2), m=self.N+1, n=self.N+1)
         mat = self.step_fac * mat @ self.sn 
         mat[-2:, :] = 0.
@@ -167,7 +168,7 @@ class EverythingAllAtOnceNumerov:
         self.S_tensor = mat.T
 
         if self_test:
-            rhs = np.zeros((self.n_theta,self.N+1))
+            rhs = np.zeros((self.n_theta,self.N+1), dtype=np.complex128)
             rhs[:,:-2] = self.step_fac * np.array([self.sn[n,:] 
                                                 + 10*self.sn[n-1,:] 
                                                 + self.sn[n-2,:] for n in range(2, self.N+1)]).T
@@ -175,7 +176,7 @@ class EverythingAllAtOnceNumerov:
             assert np.allclose(self.S_tensor, rhs, atol=1e-14, rtol=0.), "inconsistent S_tensor"
 
         # build matrix in diagonal ordered form
-        ab = np.zeros((self.n_theta, 3, self.N+1))
+        ab = np.zeros((self.n_theta, 3, self.N+1), dtype=np.complex128)
         arbitary_value = 0.
 
         ## first row
@@ -194,13 +195,14 @@ class EverythingAllAtOnceNumerov:
         ab[0, 2, :-1] += 1.
 
         ## last column 
-        ab[0, :2, -1] = -F_G[:, 1]
+        # ab[0, :2, -1] = -F_G[:, 1]
+        ab[0, :2, -1] = -Hplus
         ab[:, 2, -1] = arbitary_value  # for completeness
         
         self.Abar_tensor = ab
 
         # build sparse A_tensor
-        self.A_tensor = np.zeros((self.n_theta, self.N+1, self.N+1))
+        self.A_tensor = np.zeros((self.n_theta, self.N+1, self.N+1), dtype=np.complex128)
         for a in range(self.n_theta):
             self.A_tensor[a, :, :] = spdiags(self.Abar_tensor[a, :, :], diags=(1,0,-1),
                                              m=self.N+1, n=self.N+1).toarray()
@@ -317,15 +319,16 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     p = params["scattExp"].p
     l = params["scattExp"].l
     F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
+    Hplus = F_G[:, 1] + 1j * F_G[:, 0]  # G + i F
 
     # build rhs vector s
-    rhs = np.empty(N+1)
+    rhs = np.empty(N+1, dtype=np.complex128)
     rhs[:-2] = h**2 /12 * np.array([s_arr[n] + 10*s_arr[n-1] + s_arr[n-2] for n in range(2, N+1)])
     # rhs[0] += ((l == 1)/6.) * y1 + 2*K(g_arr[1], -5.) * y1
     rhs[-2:] = 0. if params["inhomogeneous"] else F_G[:, 0]
 
     # build matrix in diagonal ordered form
-    ab = np.empty((3, N+1))
+    ab = np.empty((3, N+1), dtype=np.complex128)
     arbitary_value = 0.
 
     ## first row
@@ -342,7 +345,8 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     ab[2, -3:-1] = 1
 
     # last column 
-    ab[:2, -1] = -F_G[:, 1]
+    # ab[:2, -1] = -F_G[:, 1]
+    ab[:2, -1] = -Hplus
     ab[2, -1] = arbitary_value
     # print("F_G", F_G)
     # print(rhs)
