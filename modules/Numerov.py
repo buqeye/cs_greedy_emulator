@@ -124,7 +124,7 @@ class AllAtOnceNumerov:
             lower_bound = norm_residual / svals[0]  # sval_lm
             upper_bound = norm_residual / svals[-1]  # sval_sm
             assert lower_bound <= upper_bound, "lower bound has to be <= upper bound"
-        return norm_residual**2 if squared else norm_residual, lower_bound, upper_bound
+        return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
 class EverythingAllAtOnceNumerov:
@@ -238,7 +238,7 @@ class EverythingAllAtOnceNumerov:
             lower_bound = norm_residual / svals[0]  # sval_lm
             upper_bound = norm_residual / svals[-1]  # sval_sm
             assert lower_bound <= upper_bound, "lower bound has to be <= upper bound"
-        return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound, svals[0], svals[-1], norm_residual)
+        return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
 class EverythingAllAtOnceNumerovNoMatch:
@@ -259,6 +259,8 @@ class EverythingAllAtOnceNumerovNoMatch:
         else:
             self.gn, self.sn = self.g_s(xn, params)
             self.g = self.s = None
+        # self.gn *= 0
+        # self.sn *= 0
         self.n_theta = self.gn.shape[1]
         self.step_fac = self.h**2 /12
         self.y0 = y0
@@ -271,8 +273,8 @@ class EverythingAllAtOnceNumerovNoMatch:
                                   np.array([1., 10., 1.]) * self.step_fac, 
                                   self.gn[2:,:], optimize="greedy")
         self.Abar_tensor[0, ...] += np.outer(np.array([1, -2, 1]), np.ones(self.N-1))
-        self.Abar_tensor[:, 1, -1] = 0
-        self.Abar_tensor[0, 2, -2:] = 1
+        self.Abar_tensor[:, 1, -1] = 0.
+        self.Abar_tensor[0, 2, -2:] = 1.
         self.Abar_tensor = np.pad(self.Abar_tensor, 
                                   pad_width=((0,0), (1,0), (0,2)), constant_values=0.)
         from RseSolver import free_solutions_F_G
@@ -281,7 +283,7 @@ class EverythingAllAtOnceNumerovNoMatch:
         self.Abar_tensor[0, 1:3, -2] = -F_G[:,0]  # F
         self.Abar_tensor[0, 0:2, -1] = -F_G[:,1]  # G
         # optional: we set here the ununsed elements to zero
-        print("shape", self.Abar_tensor.shape)
+
         # build Numerov inhomogeneous term `s`
         mat = spdiags(np.outer([1., 10., 1.], np.ones(self.N+1)), 
                       diags=(0,1,2), m=self.N+1, n=self.N+1)
@@ -297,6 +299,7 @@ class EverythingAllAtOnceNumerovNoMatch:
 
         if self_test:
             self.test_prestore()
+            self.test_banded_implementation()
 
     @property
     def A_tensor(self):
@@ -309,8 +312,8 @@ class EverythingAllAtOnceNumerovNoMatch:
         F_G = free_solutions_F_G(l=self.params["scattExp"].l, 
                                  p=self.params["scattExp"].p, r=self.xn[-2:])
         tmp = np.pad(tmp, pad_width=((0,0), (0,2), (0,2)), constant_values=0.)
-        tmp[0, -1, -3] = 1
         tmp[0, -2, -4] = 1
+        tmp[0, -1, -3] = 1
         tmp[0, -2:, -2] = -F_G[:,0]  # F
         tmp[0, -2:, -1] = -F_G[:,1]  # G
         return tmp
@@ -320,28 +323,45 @@ class EverythingAllAtOnceNumerovNoMatch:
         def d(i,j):
             return int(i==j)
         l = self.params["scattExp"].l
-        Sja = np.ones((self.n_theta, self.N-1)) * 1e9
-        for j in range(1, self.N+1+1):
+        Sja = np.ones((self.n_theta, self.N+1)) * 1e9
+        for j in range(1, self.N-1+1):
             prefac = 0. if j > self.N-1 else 1
             for a in range(0, self.n_theta):
-                fact= d(a,0) * ((2+1/6 * d(l,1)) * d(j,1) - d(j,2)) * self.y1 \
+                fact = d(a,0) * ((2+1/6 * d(l,1)) * d(j,1) - d(j,2)) * self.y1 \
                     + self.step_fac * ( -self.gn[1, a] * (10 * d(j,1) + d(j,2) ) *self.y1  \
                                 +  self.sn[j+1,a] + 10*self.sn[j,a] + self.sn[j-1,a])
                 Sja[a, j-1] = prefac * fact
-                
+        Sja[:,-2:] = 0
         assert np.allclose(Sja, self.S_tensor, atol=atol, rtol=0.), "Sj inconsistent"
 
         def Dbar(i,j):
             return 1 - d(3,i) * d(j,self.N-2) - (d(2,i) + d(3,i)) * d(j,self.N-1)
 
-        Aija = np.ones((self.n_theta, 3, self.N-1)) * 1e9
+        Aija = np.ones((self.n_theta, self.A_bandwidth, self.N+1)) * 1e9
         for i in range(1,3+1):
             for j in range(1, self.N-1+1):
                 for a in range(0, self.n_theta):
-                    Aija[a, i-1,j-1] = d(a,0) * (1-3 * d(i,2)) * Dbar(i,j) \
+                    Aija[a, i,j-1] = d(a,0) * (1-3 * d(i,2)) * Dbar(i,j) \
                                 + self.step_fac * self.gn[j+1,a] * (1 + 9 * d(i,2)) * Dbar(i,j)
-        print(np.max(np.abs(Aija- self.Abar_tensor)))
+        from RseSolver import free_solutions_F_G
+        F_G = free_solutions_F_G(l=self.params["scattExp"].l, 
+                                 p=self.params["scattExp"].p, r=self.xn[-2:])
+        Aija[:, 0, :] = 0.
+        Aija[:, :, -2:] = 0.   
+        Aija[0, -1, -4:-2] = 1
+        Aija[0, 1:3, -2] = -F_G[:,0]  # F
+        Aija[0, :2, -1] = -F_G[:,1]  # G
         assert np.allclose(Aija, self.Abar_tensor, atol=atol, rtol=0.), "Aijk inconsistent"
+
+    def test_banded_implementation(self, atol=1e-14):
+        lecs = [  1.  , 200.  , -91.85]
+        sol_banded = self.solve([lecs])
+        Amat = np.tensordot(lecs, self.A_tensor, axes=1)
+        svec = np.tensordot(lecs, self.S_tensor, axes=1)
+        sol_sparse = np.concatenate([[self.y0, self.y1], 
+                                     np.linalg.solve(Amat, svec)])
+        assert np.allclose(np.squeeze(sol_banded), 
+                           sol_sparse, atol=atol, rtol=0.), "sparse and banded matrix implementations inconsistent"
 
     def get_linear_system(self, theta, ret_diag_form=True, file_dump=False):
         A = np.tensordot(theta, self.Abar_tensor, axes=1)
@@ -362,7 +382,7 @@ class EverythingAllAtOnceNumerovNoMatch:
             ret.append(np.concatenate([[self.y0, self.y1], sol]))
         return np.array(ret).T
     
-    def residuals(self, xtilde, theta, squared=True, calc_error_bounds=False):
+    def residuals(self, xtilde, theta, squared=False, calc_error_bounds=False):
         A, s = self.get_linear_system(theta, ret_diag_form=False)
         # A = diag_ord_form_to_mat(A_banded, ab_l_and_u=self.A_l_and_u, toarray=True)
         residual = s - A @ xtilde
@@ -374,7 +394,7 @@ class EverythingAllAtOnceNumerovNoMatch:
             lower_bound = norm_residual / svals[0]  # sval_lm
             upper_bound = norm_residual / svals[-1]  # sval_sm
             assert lower_bound <= upper_bound, "lower bound has to be <= upper bound"
-        return norm_residual**2 if squared else norm_residual, lower_bound, upper_bound
+        return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 def numerov(xn, g, y0, y1, s=None, solve=True, unittest=False, params=None, file_dump=False):
     """
@@ -454,7 +474,7 @@ def numerov2(xn, y0, g, s=None, solve=True, unittest=False, params=None, file_du
     p = params["scattExp"].p
     l = params["scattExp"].l
     F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
-    Hplus = F_G[:, 1] + 1j * F_G[:, 0]  # G + i F
+    Hplus = F_G[:, 1] # + 1j * F_G[:, 0]  # G + i F
 
     # build rhs vector s
     rhs = np.empty(N+1, dtype=np.complex128)
