@@ -400,6 +400,7 @@ class AffineGROMNoMatch:
                  init_snapshot_lecs=None,
                  greedy_max_iter=5, 
                  mode="linear",
+                 emulator_training_mode="grom",
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -412,6 +413,8 @@ class AffineGROMNoMatch:
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
+        assert emulator_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
+        self.emulator_training_mode = emulator_training_mode
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
@@ -520,7 +523,7 @@ class AffineGROMNoMatch:
         if update_offline_stage:
             self.update_offline_stage()
 
-    def update_offline_stage(self, verbose=False):
+    def update_offline_stage(self, verbose=True):
         # Note: when adding snapshots to the emulator basis, one does not need to recompute all tensors again,
         # rather one can update them for computational efficiency. Since this update only occurs in the offline 
         # stage of the emulator, we keep it in this proof-of-principle work simple and compute the tensors from scratch
@@ -533,9 +536,9 @@ class AffineGROMNoMatch:
 
         # GROM emulator equations: reduction and projection
         A_tensor_x_X_red = A_tensor @ X_red
-        self.A_tilde = X_dagger @ A_tensor_x_X_red
-        self.s_tilde = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
-
+        self.A_tilde_grom = X_dagger @ A_tensor_x_X_red
+        self.s_tilde_grom = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
+        print(self.s_tilde_grom.shape)
         # prestore tensors for error estimates
         einsum_args = dict(optimize="greedy", dtype=np.longdouble)
         self.error_term1 = np.einsum("ki,alk,blm,mj->ijab", 
@@ -568,21 +571,32 @@ class AffineGROMNoMatch:
     def simulate(self, lecList):
         return self.numerov_solver.solve(lecList)
 
-    def emulate(self, lecList, estimate_norm_residual=False, 
+    def emulate(self, lecList, estimate_norm_residual=False, mode="grom",
                 calc_error_bounds=False, calibrate_norm_residual=False,
-                cond_number_threshold=None, self_test=True):
+                cond_number_threshold=None, self_test=True, 
+                lspg_rcond=None, lspg_solver="svd"):
         coeffs_all = []
+        assert mode in ("grom", "lspg"), f"requested mode '{mode}' unknown"
+        A_tilde_tensor = self.A_tilde_grom if mode == "grom" else self.A_tilde_lspg
+        s_tilde_tensor = self.s_tilde_grom if mode == "grom" else self.s_tilde_lspg
         for lecs in lecList:
             # reconstruct linear system    
-            A_tilde = np.tensordot(lecs, self.A_tilde, axes=1)
-            s_tilde = np.tensordot(lecs, self.s_tilde, axes=1)
+            A_tilde = np.tensordot(lecs, A_tilde_tensor, axes=1)
+            s_tilde = np.tensordot(lecs, s_tilde_tensor, axes=1)
 
             # solve linear system and emulate
             if cond_number_threshold is not None:
                 cond_number = np.linalg.cond(A_tilde)
                 if cond_number > cond_number_threshold:
                     print(f"Warning: condition number is above threshold (aff)! {cond_number:.8e}")
-            coeffs_curr = np.linalg.solve(A_tilde, s_tilde)
+            if mode == "grom":
+                coeffs_curr = np.linalg.solve(A_tilde, s_tilde)
+            else:
+                if lspg_solver == "svd":
+                    coeffs_curr, residuals, rank, svals = np.linalg.lstsq(A_tilde, s_tilde, rcond=lspg_rcond)
+                else:
+                    Q, R = np.linalg.qr(A_tilde)
+                    coeffs_curr = np.linalg.solve(R, Q.conjugate().T @ s_tilde)  # Solve Rx = Q^dagger s_tilde
             coeffs_all.append(coeffs_curr)
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
         coeffs_all = np.column_stack(coeffs_all)
@@ -664,10 +678,12 @@ class AffineGROMNoMatch:
         
         return total2
 
-    def greedy_algorithm(self, error_calibration_mode=False, 
+    def greedy_algorithm(self, error_calibration_mode=False, mode=None,
                          calibrate_error_estimation=True, atol=1e-12,
                          lowest_mean_norm_residuals=1e-11,
                          logging=True, verbose=True):
+        if mode is None:
+            mode = self.emulator_training_mode
         if error_calibration_mode:
             calibrate_error_estimation = True
             max_iter = 1
@@ -696,7 +712,7 @@ class AffineGROMNoMatch:
             # including the ones we've already considered in the greedy iteration.
     
             # emulate candidate snapshots           
-            emulated_sols, norm_residuals, error_bounds = self.emulate(emulate_snapshots, 
+            emulated_sols, norm_residuals, error_bounds = self.emulate(emulate_snapshots, mode=mode,
                                                                        estimate_norm_residual=True, 
                                                                        calibrate_norm_residual=False,
                                                                        calc_error_bounds=logging, 
