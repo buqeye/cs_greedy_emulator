@@ -259,8 +259,6 @@ class EverythingAllAtOnceNumerovNoMatch:
         else:
             self.gn, self.sn = self.g_s(xn, params)
             self.g = self.s = None
-        # self.gn *= 0
-        # self.sn *= 0
         self.n_theta = self.gn.shape[1]
         self.step_fac = self.h**2 /12
         self.y0 = y0

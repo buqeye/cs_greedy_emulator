@@ -427,7 +427,7 @@ class AffineGROMNoMatch:
         self.numerov_solver = EverythingAllAtOnceNumerovNoMatch(self.grid.points, 
                                                          g=None, g_s=g_s_affine, 
                                                          y0=0., 
-                                                         y1=(0. if inhomogeneous else 1.), 
+                                                         y1=(0. if self.inhomogeneous else 1.), 
                                                          params=rseParams)
         self.n_theta = self.numerov_solver.n_theta
         
