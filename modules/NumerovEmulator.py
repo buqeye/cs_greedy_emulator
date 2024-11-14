@@ -538,7 +538,7 @@ class AffineGROMNoMatch:
         A_tensor_x_X_red = A_tensor @ X_red
         self.A_tilde_grom = X_dagger @ A_tensor_x_X_red
         self.s_tilde_grom = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
-        print(self.s_tilde_grom.shape)
+
         # prestore tensors for error estimates
         einsum_args = dict(optimize="greedy", dtype=np.longdouble)
         self.error_term1 = np.einsum("ki,alk,blm,mj->ijab", 
