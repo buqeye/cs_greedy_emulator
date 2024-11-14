@@ -25,7 +25,6 @@ class AffineGROM:
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
-        self.greedy_logging = None
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
@@ -413,17 +412,16 @@ class AffineGROMNoMatch:
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
-        self.greedy_logging = None
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
 
         # FOM solver (all-at-once Numerov)
-        inhomogeneous = True
+        self.inhomogeneous = True
         rseParams = {"grid": grid, 
                      "scattExp": scattExp, 
                      "potential": scattExp.potential, 
-                     "inhomogeneous": inhomogeneous
+                     "inhomogeneous": self.inhomogeneous
                      }
         from RseSolver import g_s_affine
         self.numerov_solver = EverythingAllAtOnceNumerovNoMatch(self.grid.points, 
@@ -533,13 +531,13 @@ class AffineGROMNoMatch:
         S_tensor = self.numerov_solver.S_tensor
         S_tensor_conj = S_tensor.conjugate()
 
-        # emulator equations: reduction and projection
+        # GROM emulator equations: reduction and projection
         A_tensor_x_X_red = A_tensor @ X_red
         self.A_tilde = X_dagger @ A_tensor_x_X_red
         self.s_tilde = np.tensordot(X_dagger, S_tensor, axes=[1,1]).T
 
         # prestore tensors for error estimates
-        einsum_args = dict(optimize="greedy", dtype=np.complex128)
+        einsum_args = dict(optimize="greedy", dtype=np.longdouble)
         self.error_term1 = np.einsum("ki,alk,blm,mj->ijab", 
                                       X_red.conjugate(), A_tensor.conjugate(), A_tensor, X_red, **einsum_args) 
         self.error_term2 = np.einsum("bk,aki,ij->baj", S_tensor_conj, A_tensor, X_red, **einsum_args)
@@ -561,6 +559,11 @@ class AffineGROMNoMatch:
         Y_conj = self.Y_tensor.conjugate()
         self.S_tensor_projY = np.einsum("iw,ai->aw", Y_conj, S_tensor, **einsum_args)
         self.A_tensor_projY = np.einsum("iw,aij,ju->awu", Y_conj, A_tensor, X_red, **einsum_args)
+
+        # LSPG emulator equations
+        Y_tensor_dagger = Y_conj.T
+        self.A_tilde_lspg = Y_tensor_dagger @ A_tensor_x_X_red
+        self.s_tilde_lspg = np.tensordot(Y_tensor_dagger, S_tensor, axes=[1,1]).T
 
     def simulate(self, lecList):
         return self.numerov_solver.solve(lecList)
@@ -595,7 +598,7 @@ class AffineGROMNoMatch:
             if self_test or calc_error_bounds:
                 norm_residuals_FOM = np.empty(num_norm_residuals)
                 for ilecs, lecs in enumerate(lecList):
-                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[2:,ilecs], lecs, 
+                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[2:,ilecs], lecs, squared=False,
                                                                                       calc_error_bounds=calc_error_bounds)
                     error_bounds.append(bounds)  # may be None
                 error_bounds = np.array(error_bounds)
@@ -612,17 +615,27 @@ class AffineGROMNoMatch:
         else:
             return emulated_sols
 
+    def get_S_matrix(self, sols):
+        ret = []
+        for sol in sols.T:
+            a = sol[-2] + float(self.inhomogeneous)
+            b = sol[-1]
+            num = a + 1j*b
+            denom = a - 1j*b
+            ret.append(num / denom)
+        return np.array(ret)            
+
     def reconstruct_norm_residual(self, lecs, coeffs):
         lecs_H = lecs.conjugate().T
         coeffs_H = coeffs.conjugate().T
 
-        einsum_args = dict(optimize="greedy", dtype=np.complex128)
+        einsum_args = dict(optimize="greedy", dtype=np.longdouble)
 
         # import time
         # start_time = time.time()
         
         # first term (x^\dagger A^\dagger A x)
-        res = np.empty(3, dtype=np.complex128)
+        res = np.empty(3, dtype=np.longdouble)
         res[0] = np.einsum("i,ijab,a,b,j->", coeffs_H, self.error_term1, lecs_H, lecs, coeffs, **einsum_args)
         ## second term (s^dagger A x)
         res[1] = -2.*np.real(np.einsum("baj,a,b,j->", self.error_term2, lecs, lecs_H, coeffs, **einsum_args))
@@ -647,13 +660,14 @@ class AffineGROMNoMatch:
         # elapsed_time = end_time - start_time
         # print(f"Elapsed time (vector norm): {elapsed_time1e-6:.5e} seconds")
         # print(f"reconstructed norm residuals diff: {total - total2:.2e} | {total:.2e} {total2:.2e}")
-        # assert np.allclose(total, total2, atol=1e-9, rtol=0.), "total and total2 inconsistent"
+        assert np.allclose(total, total2, atol=1e-8, rtol=0.), f"total and total2 inconsistent; diff: {total-total2}"
         
         return total2
 
     def greedy_algorithm(self, error_calibration_mode=False, 
                          calibrate_error_estimation=True, atol=1e-12,
-                         logging=True, verbose=False):
+                         lowest_mean_norm_residuals=1e-11,
+                         logging=True, verbose=True):
         if error_calibration_mode:
             calibrate_error_estimation = True
             max_iter = 1
@@ -703,6 +717,9 @@ class AffineGROMNoMatch:
             if mean_norm_residuals > current_mean_norm_residuals:
                 print(f"\t\tWarning: estimated mean error has increased. Terminating greedy iteration.")
                 break
+            if mean_norm_residuals < lowest_mean_norm_residuals:
+                print(f"\t\tWarning: estimated mean error reached set bound < {lowest_mean_norm_residuals:.2e}. Terminating greedy iteration.")
+                break
             current_mean_norm_residuals = mean_norm_residuals
 
             # select the candidate snapshot with maximum (estimated) error
@@ -739,15 +756,14 @@ class AffineGROMNoMatch:
                 self.coercivity_constant = exact_error / max_err_est
                 assert self.coercivity_constant > 0., "coercivity constant is not positive"
                 print(f"\t\tcoercivity constant: {self.coercivity_constant:.3e}")
+                if logging:
+                    self.greedy_logging[-1].append(self.coercivity_constant)
 
             if logging and (arg_max_err_est == arg_max_err_real):
                 assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
                                    np.squeeze(to_be_added_fom_sol), atol=1e-14, rtol=0.), "adding the wrong FOM solution to basis?"
+                assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
                 
-            if logging and calibrate_error_estimation:
-                # assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
-                self.greedy_logging[-1].append(self.coercivity_constant)
-
             # update snapshot matrix by adding new FOM solution and interal records
             if not error_calibration_mode and niter < max_iter-1:
                 print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.included_snapshots_idxs}")
