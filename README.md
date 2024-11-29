@@ -1,6 +1,6 @@
 # Greedy Emulators for Nuclear Two-Body Scattering
 
-<p><img align="right" width="280" src="./logos/streamline.png">
+<p><img align="right" width="360" src="./logos/streamline.png">
 The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering.</p>
 
 **At a glance:**   
