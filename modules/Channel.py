@@ -31,6 +31,9 @@ class Channel:
 
         if not(self.L+self.S >= self.J >= abs(self.L - self.S)):
             raise ValueError(f"Channel {self} doesn't obey angular momentum algebra.")
+        
+        if not(self.LL+self.S >= self.J >= abs(self.LL - self.S)):
+            raise ValueError(f"Channel {self} doesn't obey angular momentum algebra.")
 
     @property
     def LdotS(self):
