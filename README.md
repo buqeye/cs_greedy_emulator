@@ -1,15 +1,41 @@
 # Greedy Emulators for Nuclear Two-Body Scattering
 
-## Python 3 code
+<p><img align="right" width="280" src="./logos/streamline.png">
+The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering.</p>
 
+**At a glance:**   
 * Numerov method in matrix form (FOM solver)
 * Galerkin reduced order model (ROM) based on the Numerov method
 * Proper Orthogonalization (POD)
 * efficient offline-online decomposition
 * error estimates and greedy algorithm
+
+The two developed emulators are based on the Petrov-Galerking Reduced Basis Method (RBM). They implement a **greedy approach** to refine their basis iteratively in the training stage, placing snapshots in the interaction’s parameter space where the emulator’s error is estimated to be maximum.  This algorithm implements the estimation of emulator errors, which is still in its infancy in nuclear physics, and has a wide range of applications for emulating solutions of large linear systems. 
+This algorithm is contrasted with a **Proper Orthogonalization Decomposition (POD)**.
+
+This repository accompanies our manuscript.
+
+
+## Overview
+
+The repository is organized as follows:
+
+* `data`: contains the values of the low-energy couplings associated with the GT+ potentials as `yaml` files. The file names encode the chiral order, regulator cutoff, and spectral function cutoff. The values were extracted from the developer's source code.
+* `logos`: contains the logos relevant to this work
+* `modules`: contains classes, functions, and more relevant to our emulators.
+* `plots`: contains code for plotting
+* `pdf`: contains the figures generated in the PDF format
+* `src`: contains `C++` code associated with the GT+ potentials. The codes were modified from their original version. Attempt was made to keep the modifications minimal. **Affine versions** of the potentials have been added.
+  
+The following `Jupyter` notebooks are included, providing the key results of this work:
+
+* `notes.ipynb`: contains notes useful for implementing the emulator equations.
+* `chiral.ipynb`: produces all figures pertinent to the GT+ chiral potentials.
+* `minnesota.ipynb`: produces all figures pertinent to the simple Minnesota potential.
+* `SCM_playground.ipynb`: contains our explorations of the Successive Constraint Method (SCM).
   
 
-### Installing and testing the Python code
+## Installing and testing the Python code
 
 Install requirements by running:
 ```shell
@@ -62,8 +88,19 @@ Run the following pytest command to test important components of the code:
 python3 -m pytest tests.py
 ```
 
-## License and acknowledgment
+## Cite this work
 
-Private. Please contact Christian Drischler (<drischler@ohio.edu>) for license information.
+Please use the following BibTeX entry to cite our work:
 
-[Dris21]:https://www.sciencedirect.com/science/article/pii/S0370269321007176?via%3Dihub
+```bibtex
+@article{Maldonado,
+    ...
+}
+```
+
+## Contact details
+
+Christian Drischler (<drischler@ohio.edu>)  
+Department of Physics and Astronomy   
+Ohio University  
+Athens, OH 45701, USA 
