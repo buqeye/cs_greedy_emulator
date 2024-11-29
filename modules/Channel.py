@@ -20,7 +20,7 @@ class Channel:
     def check(self):
         """
         checks that the channel is physical, obeying the Pauli principle,
-        parity conservation, and angular momentum coupling
+        parity conservation, angular momentum coupling, isospin coupling algebra
         """
         tmp = self.S + self.T
         if not (self.isOdd(tmp + self.L) and self.isOdd(tmp + self.LL)):
@@ -34,6 +34,9 @@ class Channel:
         
         if not(self.LL+self.S >= self.J >= abs(self.LL - self.S)):
             raise ValueError(f"Channel {self} doesn't obey angular momentum algebra.")
+        
+        if abs(self.channel) > self.T:
+            raise ValueError(f"Channel {self} doesn't obey isospin coupling algebra.")
 
     @property
     def LdotS(self):
