@@ -219,11 +219,14 @@ def minnesota_full(x, chan, **kwargs):
     # https://arxiv.org/pdf/1106.3557
 
 
-def chiral(x, chan, **kwargs):
+def chiral(x, chan, use_default_lec_values=False, **kwargs):
     channel = chiralPot.Channel(S=chan.S, L=chan.L, LL=chan.LL, J=chan.J, channel=chan.channel)
     potId = kwargs["potId"]  # 213  # [order][cutoff][sfr cutoff]
-    lecs = chiralPot.Lecs(kwargs["CS"], kwargs["CT"], kwargs["C1"], kwargs["C2"], kwargs["C3"], kwargs["C4"],
-                          kwargs["C5"], kwargs["C6"], kwargs["C7"], kwargs["CNN"], kwargs["CPP"])
+    if use_default_lec_values:
+        lecs = None
+    else:
+        lecs = chiralPot.Lecs(kwargs["CS"], kwargs["CT"], kwargs["C1"], kwargs["C2"], kwargs["C3"], kwargs["C4"],
+                            kwargs["C5"], kwargs["C6"], kwargs["C7"], kwargs["CNN"], kwargs["CPP"])
     return chiralPot.Vrlocal(x, potId, channel, lecs)
 
 def chiral_affine(x, chan, **kwargs):
@@ -231,6 +234,23 @@ def chiral_affine(x, chan, **kwargs):
     potId = kwargs["potId"]  # 213  # [order][cutoff][sfr cutoff]
     ret = np.zeros(12, dtype=np.double)
     chiralPot.Vrlocal_affine(x, potId, channel, ret)
+    return ret
+
+def chiralms(k, kk, chan, use_default_lec_values=False, **kwargs):
+    channel = chiralPot.Channel(S=chan.S, L=chan.L, LL=chan.LL, J=chan.J, channel=chan.channel)
+    potId = kwargs["potId"]  # 213  # [order][cutoff][sfr cutoff]
+    if use_default_lec_values:
+        lecs = None
+    else:
+        lecs = chiralPot.Lecs(kwargs["CS"], kwargs["CT"], kwargs["C1"], kwargs["C2"], kwargs["C3"], kwargs["C4"],
+                            kwargs["C5"], kwargs["C6"], kwargs["C7"], kwargs["CNN"], kwargs["CPP"])
+    return chiralPot.Vplocal(k, kk, potId, channel, lecs)
+
+def chiralms_affine(k, kk, chan, **kwargs):
+    channel = chiralPot.Channel(S=chan.S, L=chan.L, LL=chan.LL, J=chan.J, channel=chan.channel)
+    potId = kwargs["potId"]  # 213  # [order][cutoff][sfr cutoff]
+    ret = np.zeros(12, dtype=np.double)
+    chiralPot.Vplocal_affine(k, kk, potId, channel, ret)
     return ret
 
 def chiral_lec_trafo_matrix():

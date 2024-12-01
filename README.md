@@ -20,7 +20,7 @@ This repository accompanies our manuscript.
 
 The repository is organized as follows:
 
-* `data`: contains the values of the low-energy couplings associated with the GT+ potentials as `yaml` files. The file names encode the chiral order, regulator cutoff, and spectral function cutoff. The values were extracted from the developer's source code.
+* `data`: contains the values of the low-energy couplings associated with the GT+ potentials as `yaml` files. The file names encode the chiral order, regulator cutoff, and spectral function cutoff. The values were extracted from the developer's source code. 
 * `logos`: contains the logos relevant to this work
 * `modules`: contains classes, functions, and more relevant to our emulators.
 * `plots`: contains code for plotting
@@ -35,6 +35,13 @@ The following `Jupyter` notebooks are included, providing the key results of thi
 * `SCM_playground.ipynb`: contains our explorations of the Successive Constraint Method (SCM).
   
 
+The LEC files in `data` can be generated via:
+```shell
+make lec_output
+./lec_output
+```
+This will also run a unittest that checks whether the function returning the affine decomposition of the chiral interactions matches the output of the original function provided by the developers (i.e., not based on the affine decomposition).
+
 ## Installing and testing the Python code
 
 Install requirements by running:
@@ -44,7 +51,19 @@ source env/bin/activate
 python3 -m pip install -r requirements.txt
 # deactivate ## when the job is done
 ```
-Further, `Cython`, `gcc`, and `GSL` need to be installed for the chiral interactions.
+Further, `Cython`, `gcc`, and `GSL` need to be installed for the chiral interactions. On MacOS, `gcc` and `GSL` can be installed using HomeBrew:
+```shell
+brew install gcc gsl
+```
+
+In addition, [Johnson's cubature](https://github.com/stevengj/cubature) library needs to be built and installed. This can, e.g., be done via:
+
+```shell
+make install_cubature
+# make sure to add the printed line to your shell's rc file
+```
+
+The location of this installation will be `~/src/cubature`.
 
 Optional: set environment variable to plot the phase shift data obtained from the PWA '93, which are located in our Dropbox.
 ```shell
@@ -62,14 +81,6 @@ The chiral interactions can also be compiled manually. This is, however, not nee
 g++ -fPIC -O3 -shared -c src/localGt+.cpp -o liblocalGt+.so -I/usr/local/include -I./src/
 python3 setup.py build_ext --inplace
 ```
-
-The `data/` folder contains the values of the low-energy constants (LECs) of the GT+ family of local chiral potentials as `yaml` files.
-These files can be generated via:
-```shell
-make lec_output
-./lec_output
-```
-This will also run a unittest that checks whether the function returning the affine decomposition of the chiral interactions matches the output of the original function provided by the developers (i.e., not based on the affine decomposition).
 
 Run a test calculation for the general KVP (can be skipped if only the new Galerkin emulator is of interest):
 

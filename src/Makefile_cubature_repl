@@ -1,0 +1,20 @@
+PREFIX=/usr/local
+CFLAGS=-O3 --fast-math -fopenmp -march=native
+# CFLAGS=-O0 -g --fast-math
+LIB=libcubature.a
+
+OBJS=pcubature.o hcubature.o
+
+lib: $(LIB)
+
+install: $(LIB)
+	mkdir -p $(PREFIX)/include $(PREFIX)/lib
+	install -m 644 cubature.h $(PREFIX)/include
+	install -m 644 $(LIB) $(PREFIX)/lib
+
+$(LIB) : $(OBJS)
+	ar cr $(LIB) $(OBJS)
+
+clean:
+	/bin/rm -f *.o *.a
+

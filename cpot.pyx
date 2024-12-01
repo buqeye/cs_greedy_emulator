@@ -57,17 +57,28 @@ def Lecs(double CS, double CT, double C1, double C2,
 def V0( k,  kk,  pot,  S,  L,  LL,  J, channel):
   return cpot.V0( k,  kk,  pot,  S,  L,  LL,  J, channel)
 
-def Vrlocal(r, pot, chan, lecs):
+def Vplocal(k, kk, pot, chan, lecs):
   cchan = <cpot.Channel *> PyCapsule_GetPointer(chan, "Channel")
-  clecs = <cpot.Lecs *> PyCapsule_GetPointer(lecs, "Lecs")
-  return cpot.Vrlocal(r, pot, cchan, clecs)
-
-def V0(k, kk, pot, chan, lecs):
-    cchan = <cpot.Channel *> PyCapsule_GetPointer(chan, "Channel")
-    clecs = <cpot.Lecs *> PyCapsule_GetPointer(lecs, "Lecs")
-    return cpot.V0(k, kk, pot, cchan, clecs)
+  clecs = <cpot.Lecs *> NULL if lecs is None else <cpot.Lecs *> PyCapsule_GetPointer(lecs, "Lecs") 
+  return cpot.Vplocal(k, kk, pot, cchan, clecs)
 
 import numpy as np
+def Vplocal_affine(k, kk, pot, chan, ret):  # 'ret' is a one-dimensional numpy array
+    """ 
+    see https://docs.cython.org/en/latest/src/userguide/memoryviews.html#pass-data-from-a-c-function-via-pointer
+    """
+    cchan = <cpot.Channel *> PyCapsule_GetPointer(chan, "Channel")
+    if not ret.flags['C_CONTIGUOUS']:
+        ret = np.ascontiguousarray(ret)  # Makes a contiguous copy of the numpy array.
+    cdef double[::1] ret_memview = ret
+    cpot.Vplocal_affine(k, kk, pot, cchan, &ret_memview[0])
+    return ret
+
+def Vrlocal(r, pot, chan, lecs):
+  cchan = <cpot.Channel *> PyCapsule_GetPointer(chan, "Channel")
+  clecs = <cpot.Lecs *> NULL if lecs is None else <cpot.Lecs *> PyCapsule_GetPointer(lecs, "Lecs") 
+  return cpot.Vrlocal(r, pot, cchan, clecs)
+
 def Vrlocal_affine(r, pot, chan, ret):  # 'ret' is a one-dimensional numpy array
     """ 
     see https://docs.cython.org/en/latest/src/userguide/memoryviews.html#pass-data-from-a-c-function-via-pointer

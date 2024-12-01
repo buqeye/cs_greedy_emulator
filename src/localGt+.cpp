@@ -48,10 +48,10 @@
 #include <gsl/gsl_math.h>
 #include <math.h>
 #include <localGt+.h>
+#include "cubature.h"
 
 using namespace std;
 
-static bool output_Vr = false;
 static double pi = 2.0*acos(0.0);
 static double hbarc = 197.327; // 1 = hbarc MeV fm
 static double Mneu = 939.56563;  // neutron mass in MeV
@@ -653,34 +653,14 @@ static void Vfull_tensor(double r, int cutoff, int lam, int order, int S, int L,
 }
 
 
-
-/*********************************** Local potential ****************************************/
-
-struct parameters {double k; double kk; int cutoff; int S; int L; int LL; int J; int T; int order; int lam; int channel;};
-
-// integrand for Fourier trafo, with all LEC definitions
-static double NNLOintegrand(double r, void *p)
-{
-    parameters *params= (parameters *)p;
-
-    if (potential_print)
-    {
-        potential_print--;
-        if (params->order == 0) {cout << "Local chiral potential at LO: cutoff " << R0[params->cutoff] << " fm, lambda " << lambda[params->lam] << " fm." << endl;}
-        else if (params->order == 1) {cout << "Local chiral potential at NLO: cutoff " << R0[params->cutoff] << " fm, lambda " << lambda[params->lam] << " fm." << endl;}
-        else if (params->order == 2) {cout << "Local chiral potential at NNLO: cutoff " << R0[params->cutoff] << " fm, lambda " << lambda[params->lam] << " fm." << endl;}
-        else { cout << "not" << endl;}
-    }
-
-
-
-    if ((params->lam) == 2) { //SFR 800 MeV
-        if ((params->order)==0) { // LO
+void set_global_lec_values(int cutoff, int lam, int order){
+       if ((lam) == 2) { //SFR 800 MeV
+        if ((order)==0) { // LO
             CS[0]=0.63603; CS[1]=-0.75112; CS[2]=-1.79693; CS[3]=-0.12898; CS[4]=-1.29631;
             CT[0]=0.71047; CT[1]=0.37409; CT[2]=0.15442; CT[3]=0.51809; CT[4]=0.25648;
             CNN[0]=-0.00996; CNN[1]=-0.00373; CNN[2]=0.00624; CNN[3]=-0.00732; CNN[4]=0.00079;
             CPP[0]=0.0; CPP[1]=-0.04349; CPP[2]=-0.03294; CPP[3]=0.0; CPP[4]=-0.03923;    }
-        else if ((params->order)==1){ // NLO, no numbers for 0.8 fm
+        else if ((order)==1){ // NLO, no numbers for 0.8 fm
             CS[0]=0.0; CS[1]=3.06894; CS[2]=-0.02682; CS[3]=9.37208; CS[4]=0.94811;
             CT[0]=0.0; CT[1]=1.50714; CT[2]=0.77728; CT[3]=3.24120; CT[4]=0.98044;
             C1[0]=0.0; C1[1]=0.32552; C1[2]=0.23418; C1[3]=0.37370; C1[4]=0.28633;
@@ -692,7 +672,7 @@ static double NNLOintegrand(double r, void *p)
             C7[0]=0.0; C7[1]=-0.33952; C7[2]=-0.34508; C7[3]=-0.48576; C7[4]=-0.31762;
             CNN[0]=0.0; CNN[1]=0.04271; CNN[2]=0.04818; CNN[3]=0.04680; CNN[4]=0.04449;
             CPP[0]=0.0; CPP[1]=0.05917; CPP[2]=0.06137; CPP[3]=0.0; CPP[4]=0.05857;    }
-        else if ((params->order)==2) { // N2LO
+        else if ((order)==2) { // N2LO
             CS[0]=9.67288; CS[1]=3.82785; CS[2]=1.66533; CS[3]=5.87393; CS[4]=2.60023;
             CT[0]=1.68398; CT[1]=0.55793; CT[2]=0.40535; CT[3]=0.86404; CT[4]=0.46074;
             C1[0]=-0.20020; C1[1]=-0.08163; C1[2]=-0.07173; C1[3]=-0.11819; C1[4]=-0.06749;
@@ -706,17 +686,17 @@ static double NNLOintegrand(double r, void *p)
             CPP[0]=0.0; CPP[1]=0.06296; CPP[2]=0.06419; CPP[3]=0.0; CPP[4]=0.0644;    }
         else {cout << "Error with LECs!" << endl;}
     }
-    else if ((params->lam) == 3) { //SFR 1000 MeV
+    else if ((lam) == 3) { //SFR 1000 MeV
 
 
 
-        if ((params->order)==0) { // LO
+        if ((order)==0) { // LO
             CS[0]=0.63603; CS[1]=-0.75112; CS[2]=-1.79693; CS[3]=-0.12898; CS[4]=-1.29631;
             CT[0]=0.71047; CT[1]=0.37409; CT[2]=0.15442; CT[3]=0.51809; CT[4]=0.25648;
             CNN[0]=-0.00996; CNN[1]=-0.00373; CNN[2]=0.00624; CNN[3]=-0.00732; CNN[4]=0.00079;
             CPP[0]=0.0; CPP[1]=-0.04349; CPP[2]=-0.03294; CPP[3]=-0.045768; CPP[4]=-0.03923;    }
 
-        else if ((params->order)==1){ // NLO
+        else if ((order)==1){ // NLO
             CS[0]=0.0; CS[1]=3.16803; CS[2]=0.03551; CS[3]=9.55049; CS[4]=1.03075;
             CT[0]=0.0; CT[1]=1.41396; CT[2]=0.71729; CT[3]=3.14878; CT[4]=0.90699;
             C1[0]=0.0; C1[1]=0.31420; C1[2]=0.22288; C1[3]=0.37085; C1[4]=0.27239;
@@ -729,7 +709,7 @@ static double NNLOintegrand(double r, void *p)
             CNN[0]=0.0; CNN[1]=0.04271; CNN[2]=0.04817; CNN[3]=0.04655; CNN[4]=0.04449;
             CPP[0]=0.0; CPP[1]=0.059175; CPP[2]=0.061364; CPP[3]=0.069507; CPP[4]=0.05857;    }
 
-        else if ((params->order)==2) { // N2LO
+        else if ((order)==2) { // N2LO
             CS[0]=11.0104; CS[1]=5.43850; CS[2]=2.68765; CS[3]=7.74784; CS[4]=3.88699;
             CT[0]=1.16562; CT[1]=0.27672; CT[2]=0.23382; CT[3]=0.45247; CT[4]=0.24416;
             C1[0]=-0.35339; C1[1]=-0.14084; C1[2]=-0.07951; C1[3]=-0.21715; C1[4]=-0.09650;
@@ -747,13 +727,13 @@ static double NNLOintegrand(double r, void *p)
 
 
     }
-    else if ((params->lam) == 4) { // SFR 1200 MeV
-        if ((params->order)==0) { // LO
+    else if ((lam) == 4) { // SFR 1200 MeV
+        if ((order)==0) { // LO
             CS[0]=0.63603; CS[1]=-0.75112; CS[2]=-1.79693; CS[3]=-0.12898; CS[4]=-1.29631;
             CT[0]=0.71047; CT[1]=0.37409; CT[2]=0.15442; CT[3]=0.51809; CT[4]=0.25648;
             CNN[0]=-0.00996; CNN[1]=-0.00373; CNN[2]=0.00624; CNN[3]=-0.00732; CNN[4]=0.00079;
             CPP[0]=0.0; CPP[1]=-0.04349; CPP[2]=-0.03294; CPP[3]=0.0; CPP[4]=-0.03923;    }
-        else if ((params->order)==1){ // NLO
+        else if ((order)==1){ // NLO
             CS[0]=0.0; CS[1]=3.31668; CS[2]=0.07785; CS[3]=9.82149; CS[4]=1.09179;
             CT[0]=0.0; CT[1]=1.36887; CT[2]=0.67523; CT[3]=3.11612; CT[4]=0.85469;
             C1[0]=0.0; C1[1]=0.31002; C1[2]=0.21645; C1[3]=0.36985; C1[4]=0.26360;
@@ -765,7 +745,7 @@ static double NNLOintegrand(double r, void *p)
             C7[0]=0.0; C7[1]=-0.37351; C7[2]=-0.37402; C7[3]=-0.52057; C7[4]=-0.34834;
             CNN[0]=0.0; CNN[1]=0.04270; CNN[2]=0.04817; CNN[3]=0.04649; CNN[4]=0.04449;
             CPP[0]=0.0; CPP[1]=0.0; CPP[2]=0.0; CPP[3]=0.0; CPP[4]=0.0;    }
-        else if ((params->order)==2) { // N2LO
+        else if ((order)==2) { // N2LO
             CS[0]=0.0; CS[1]=6.91212; CS[2]=3.52998; CS[3]=9.74348; CS[4]=4.99755;
             CT[0]=0.0; CT[1]=0.04285; CT[2]=0.09195; CT[3]=0.14859; CT[4]=0.06480;
             C1[0]=0.0; C1[1]=-0.14827; C1[2]=-0.04889; C1[3]=-0.25208; C1[4]=-0.08146;
@@ -779,13 +759,13 @@ static double NNLOintegrand(double r, void *p)
             CPP[0]=0.0; CPP[1]=0.0; CPP[2]=0.0; CPP[3]=0.0; CPP[4]=0.0;    }
         else {cout << "Error with LECs!" << endl;}
     }
-    else if ((params->lam) == 5) { // SFR 1400 MeV
-        if ((params->order)==0) { // LO
+    else if ((lam) == 5) { // SFR 1400 MeV
+        if ((order)==0) { // LO
             CS[0]=0.63603; CS[1]=-0.75112; CS[2]=-1.79693; CS[3]=-0.12898; CS[4]=-1.29631;
             CT[0]=0.71047; CT[1]=0.37409; CT[2]=0.15442; CT[3]=0.51809; CT[4]=0.25648;
             CNN[0]=-0.00996; CNN[1]=-0.00373; CNN[2]=0.00624; CNN[3]=-0.00732; CNN[4]=0.00079;
             CPP[0]=0.0; CPP[1]=-0.04349; CPP[2]=-0.03294; CPP[3]=0.0; CPP[4]=-0.03923;    }
-        else if ((params->order)==1){ // NLO
+        else if ((order)==1){ // NLO
             CS[0]=0.0; CS[1]=3.32404; CS[2]=0.10909; CS[3]=9.84285; CS[4]=1.13903;
             CT[0]=0.0; CT[1]=1.30221; CT[2]=0.64646; CT[3]=3.03064; CT[4]=0.81867;
             C1[0]=0.0; C1[1]=0.30649; C1[2]=0.21280; C1[3]=0.36791; C1[4]=0.25830;
@@ -797,7 +777,7 @@ static double NNLOintegrand(double r, void *p)
             C7[0]=0.0; C7[1]=-0.37920; C7[2]=-0.38191; C7[3]=-0.52609; C7[4]=-0.35731;
             CNN[0]=0.0; CNN[1]=0.04267; CNN[2]=0.04817; CNN[3]=0.04642; CNN[4]=0.04450;
             CPP[0]=0.0; CPP[1]=0.05909; CPP[2]=0.06120; CPP[3]=0.0; CPP[4]=0.05852;    }
-        else if ((params->order)==2) { // N2LO
+        else if ((order)==2) { // N2LO
             CS[0]=0.0; CS[1]=8.16454; CS[2]=4.19629; CS[3]=11.4902; CS[4]=5.89685;
             CT[0]=0.0; CT[1]=-0.14809; CT[2]=-0.02820; CT[3]=-0.10848; CT[4]=-0.08689;
             C1[0]=0.0; C1[1]=-0.12250; C1[2]=0.00211; C1[3]=-0.24666; C1[4]=-0.04061;
@@ -811,46 +791,10 @@ static double NNLOintegrand(double r, void *p)
             CPP[0]=0.0; CPP[1]=0.06251; CPP[2]=0.06306; CPP[3]=0.0; CPP[4]=0.06421; }
         else {cout << "Error with LECs!" << endl;}
     }
-
-#if DOCONT == 0
-    for( int i=0; i<5; i++ )
-    {
-        CS[ i ] = 0. ;
-        CT[ i ] = 0. ;
-        CNN[ i ] = 0. ;
-        CPP[ i ]  = 0. ;
-        C1[ i ] = 0. ;
-        C2[ i ] = 0. ;
-        C3[ i ] = 0. ;
-        C4[ i ] = 0. ;
-        C5[ i ] = 0. ;
-        C6[ i ] = 0. ;
-        C7[ i ] = 0. ;
-    }
-#endif
-
-    if( output_Vr )
-    {
-        if ((params->L)==(params->LL))
-        {
-            return ( Vfull(r, params->cutoff, params->lam, params->order, params->S, params->L, params->J,params->T,params->channel) );
-        }
-        else
-        {
-            return ( Vfull_tensor (r, params->cutoff, params->lam, params->order, params->S, params->L, params->LL, params->J,params->T,params->channel) );
-        }
-    }
-
-    if ((params->L)==(params->LL))
-    {
-        return (r*r*gsl_sf_bessel_jl((params->L),(params->k)*r) * gsl_sf_bessel_jl((params->L),(params->kk)*r) * Vfull(r, params->cutoff, params->lam, params->order, params->S, params->L, params->J,params->T,params->channel));
-    }
-    else
-    {
-        return (r*r*gsl_sf_bessel_jl((params->L),(params->k)*r) * gsl_sf_bessel_jl((params->LL),(params->kk)*r) * Vfull_tensor (r, params->cutoff, params->lam, params->order, params->S, params->L, params->LL, params->J,params->T,params->channel));
-    }
 }
 
+
+/*********************************** Coordinate space ****************************************/
 
 // return V(r) for a given channel and set of NN LECs
 double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs)
@@ -892,18 +836,23 @@ double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs)
 
   // fill (global) arrays with input LECs
   // note that setting only the component [cutoff_in] would suffice
-  for(int i=0; i<5; ++i){
-    CS[i] = lecs->CS; // fm^2
-    CT[i] = lecs->CT; // fm^2
-    C1[i] = lecs->C1; // fm^4
-    C2[i] = lecs->C2;
-    C3[i] = lecs->C3;
-    C4[i] = lecs->C4;
-    C5[i] = lecs->C5;
-    C6[i] = lecs->C6;
-    C7[i] = lecs->C7;
-    CNN[i] = lecs->CNN;
-    CPP[i] = lecs->CPP;
+  if (lecs) {
+    for(int i=0; i<5; ++i){
+        CS[i] = lecs->CS; // fm^2
+        CT[i] = lecs->CT; // fm^2
+        C1[i] = lecs->C1; // fm^4
+        C2[i] = lecs->C2;
+        C3[i] = lecs->C3;
+        C4[i] = lecs->C4;
+        C5[i] = lecs->C5;
+        C6[i] = lecs->C6;
+        C7[i] = lecs->C7;
+        CNN[i] = lecs->CNN;
+        CPP[i] = lecs->CPP;
+    }
+  } else {
+    // set the default values if no LECs are passed to this function
+    set_global_lec_values(cutoff_in, lambda_in, order_in);
   }
 
     // simple debugging
@@ -1007,6 +956,82 @@ void Vrlocal_affine(double r, int pot, Channel *chan, double *ret)
 }
 
 
+/*********************************** Momentum space ****************************************/
+
+struct parameters {double k; double kk; int cutoff; int S; int L; int LL; 
+                    int J; int T; int order; int lam; int channel;};
+
+// integrand for Fourier trafo, with all LEC definitions
+static double NNLOintegrand(double r, void *p)
+{
+    parameters *params= (parameters *)p;
+
+    if (potential_print)
+    {
+        potential_print--;
+        if (params->order == 0) {cout << "Local chiral potential at LO: cutoff " << R0[params->cutoff] << " fm, lambda " << lambda[params->lam] << " fm." << endl;}
+        else if (params->order == 1) {cout << "Local chiral potential at NLO: cutoff " << R0[params->cutoff] << " fm, lambda " << lambda[params->lam] << " fm." << endl;}
+        else if (params->order == 2) {cout << "Local chiral potential at NNLO: cutoff " << R0[params->cutoff] << " fm, lambda " << lambda[params->lam] << " fm." << endl;}
+        else { cout << "not" << endl;}
+    }
+
+    // set_global_lec_values(params->cutoff, params->lam, params->order)  
+    // the original version of the code set the LECs in the integrand function!
+
+#if DOCONT == 0
+    for( int i=0; i<5; i++ )
+    {
+        CS[ i ] = 0. ;
+        CT[ i ] = 0. ;
+        CNN[ i ] = 0. ;
+        CPP[ i ]  = 0. ;
+        C1[ i ] = 0. ;
+        C2[ i ] = 0. ;
+        C3[ i ] = 0. ;
+        C4[ i ] = 0. ;
+        C5[ i ] = 0. ;
+        C6[ i ] = 0. ;
+        C7[ i ] = 0. ;
+    }
+#endif
+
+    if ((params->L)==(params->LL))
+    {
+        return (r*r*gsl_sf_bessel_jl((params->L),(params->k)*r) * gsl_sf_bessel_jl((params->L),(params->kk)*r) 
+        * Vfull(r, params->cutoff, params->lam, params->order, params->S, params->L, params->J,params->T,params->channel));
+    }
+    else
+    {
+        return (r*r*gsl_sf_bessel_jl((params->L),(params->k)*r) * gsl_sf_bessel_jl((params->LL),(params->kk)*r) 
+        * Vfull_tensor (r, params->cutoff, params->lam, params->order, params->S, params->L, params->LL, params->J,params->T,params->channel));
+    }
+}
+
+// integrand for Fourier trafo, with all LEC definitions, using Johnson's cubature
+int NNLOintegrand_affine(unsigned ndim, const double *x, void *fdata,
+                         unsigned fdim, double *fval)
+{
+    parameters *params= (parameters *)fdata;
+    const double r = x[0];  // 1d integral
+    double internal_ret[16] = {};
+    double prefac;
+
+    if ((params->L)==(params->LL))
+    {
+        prefac = r*r*gsl_sf_bessel_jl((params->L),(params->k)*r) * gsl_sf_bessel_jl((params->L),(params->kk)*r);
+        Vfull(r, params->cutoff, params->lam, params->order, params->S, params->L, params->J,params->T,params->channel, internal_ret);
+    }
+    else
+    {
+        prefac = (r*r*gsl_sf_bessel_jl((params->L),(params->k)*r) * gsl_sf_bessel_jl((params->LL),(params->kk)*r) );
+        Vfull_tensor (r, params->cutoff, params->lam, params->order, params->S, params->L, params->LL, params->J,params->T,params->channel, internal_ret);
+    }
+
+    for(int i = 0; i < fdim; i++){
+         fval[i] = prefac * internal_ret[i];
+    }
+    return 0; // 0 for success
+}
 
 static double Vlocal (double k, double kk, int S, int L, int LL, int J, int order, int cutoffpar, int lambdapar, int channelpar)
 {
@@ -1056,11 +1081,6 @@ static double Vlocal (double k, double kk, int S, int L, int LL, int J, int orde
     return sol;
 }
 
-
-
-/**************************************** V0 **********************************************/
-
-
 double V0(double k, double kk, int pot, int S, int L, int LL, int J, int channel) {
 
     // pot: xyz:  x-> order: LO=0, NLO=1, N2LO=2
@@ -1075,6 +1095,7 @@ double V0(double k, double kk, int pot, int S, int L, int LL, int J, int channel
     cutoff_in = (pot-100*(pot/100))/10;
     lambda_in = pot-10*(pot/10);
 
+    set_global_lec_values(cutoff_in, lambda_in, order_in);
 
     if (pot == 0) {
         strcpy(interaction, "No NN potential");
@@ -1091,7 +1112,7 @@ double V0(double k, double kk, int pot, int S, int L, int LL, int J, int channel
     return ret;
 }
 
-double V0(double k, double kk, int pot, Channel *chan, Lecs *lecs) {
+double Vplocal(double k, double kk, int pot, Channel *chan, Lecs *lecs) {
 
     // pot: xyz:  x-> order: LO=0, NLO=1, N2LO=2
     //            y-> cutoff: 0.8=0, 1.0=1, 1.2=2, 0.9=3, 1.1=4
@@ -1110,18 +1131,23 @@ double V0(double k, double kk, int pot, Channel *chan, Lecs *lecs) {
 
   // fill (global) arrays with input LECs
   // note that setting only the component [cutoff_in] would suffice
-  for(int i=0; i<5; ++i){
-    CS[i] = lecs->CS; // fm^2
-    CT[i] = lecs->CT; // fm^2
-    C1[i] = lecs->C1; // fm^4
-    C2[i] = lecs->C2;
-    C3[i] = lecs->C3;
-    C4[i] = lecs->C4;
-    C5[i] = lecs->C5;
-    C6[i] = lecs->C6;
-    C7[i] = lecs->C7;
-    CNN[i] = lecs->CNN;
-    CPP[i] = lecs->CPP;
+  if (lecs) {
+    for(int i=0; i<5; ++i){
+        CS[i] = lecs->CS; // fm^2
+        CT[i] = lecs->CT; // fm^2
+        C1[i] = lecs->C1; // fm^4
+        C2[i] = lecs->C2;
+        C3[i] = lecs->C3;
+        C4[i] = lecs->C4;
+        C5[i] = lecs->C5;
+        C6[i] = lecs->C6;
+        C7[i] = lecs->C7;
+        CNN[i] = lecs->CNN;
+        CPP[i] = lecs->CPP;
+    }
+  } else {
+    // set the default values if no LECs are passed to this function
+    set_global_lec_values(cutoff_in, lambda_in, order_in);
   }
 
 
@@ -1139,6 +1165,78 @@ double V0(double k, double kk, int pot, Channel *chan, Lecs *lecs) {
     }
     return ret;
 }
+
+void Vplocal_affine(double k, double kk, int pot, Channel *chan, double *ret) {
+
+    int order_in, cutoff_in, lambda_in;
+    double internal_output[16] = {};
+
+    order_in = pot/100;
+    cutoff_in = (pot-100*(pot/100))/10;
+    lambda_in = pot-10*(pot/10);
+
+    int S=chan->S; int L=chan->L; int LL=chan->LL;
+    int J=chan->J; int channel=chan->channel;
+
+  // fill (global) arrays with input LECs
+  // note that setting only the component [cutoff_in] would suffice
+  double fence_value = 1.;  // has to be one because we keep the multiplication by the LECs intact
+  for(int i=0; i<5; ++i){
+    CS[i] = fence_value; // fm^2
+    CT[i] = fence_value; // fm^2
+    C1[i] = fence_value; // fm^4
+    C2[i] = fence_value;
+    C3[i] = fence_value;
+    C4[i] = fence_value;
+    C5[i] = fence_value;
+    C6[i] = fence_value;
+    C7[i] = fence_value;
+    CNN[i] = fence_value;
+    CPP[i] = fence_value;
+  }
+
+    if (pot == 0) {
+        strcpy(interaction, "No NN potential");
+        for(int i = iVconst; i<iCMAX; i++) internal_output[i] = 0.0;  // not needed but let's keep the old code's structure
+    }
+    else if ((order_in < 3) && (cutoff_in < 5) && (lambda_in < 6)) { // Local potential
+        strcpy(interaction,"Local potential");
+        // ret = 1.0/hbarc/hbarc * Vlocal(k,kk,S,L,LL,J,order_in,cutoff_in,lambda_in,channel);
+
+        if (L % 2 == 0) {
+            if (S == 0) {T = 1;}
+            else if (S == 1) {T = 0;}
+        }
+        else if (L % 2 == 1) {
+            if (S == 0) {T = 0;}
+            else if (S == 1) {T = 1;}
+        }
+
+        parameters fdata = {k, kk, cutoff_in, S, L, LL, J, T, order_in, lambda_in, channel};
+
+    const unsigned fdim = iCMAX;
+    const unsigned dim = 1;
+    const double xmin[] = {1e-12}; 
+    const double xmax[] = {20.0};
+    const size_t maxEval = 1000000;
+    const double reqAbsError = 1e-12; 
+    const double reqRelError = 1e-12;
+    const error_norm norm = ERROR_LINF;
+    double err[16];
+    
+    int stat =  pcubature(fdim, &NNLOintegrand_affine, &fdata,
+                          dim, xmin, xmax, maxEval, reqAbsError, reqRelError,
+                          norm, internal_output, err);   // return 0 when successful
+    double prefactor = 1.0/hbarc/hbarc;
+    for(int i = iVconst; i<iCMAX; i++) ret[i] = prefactor * internal_output[i];
+    }
+    else {
+        for(int i = iVconst; i<iCMAX; i++) internal_output[i] = 0.0;  // not needed but let's keep the old code's structure
+    }
+}
+
+
+/*********************************** Main function ****************************************/
 
 int main(){
     printf("exporting LEC values:\n");

@@ -1,8 +1,8 @@
 cdef extern from "src/localGt+.h":
   # see https://arxiv.org/pdf/1406.0454.pdf
   double V0(double k, double kk, int pot, int S, int L, int LL, int J, int channel);
-
-  double V0(double k, double kk, int pot, Channel *channel, Lecs *lecs);
+  double Vplocal(double k, double kk, int pot, Channel *chan, Lecs *lecs);
+  void Vplocal_affine(double k, double kk, int pot, Channel *chan, double *ret);
 
   double Vrlocal(double r, int pot, Channel *channel, Lecs *lecs);
   void Vrlocal_affine(double r, int pot, Channel *chan, double *ret);
