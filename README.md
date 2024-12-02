@@ -59,7 +59,7 @@ brew install gcc gsl
 In addition, [Johnson's cubature](https://github.com/stevengj/cubature) library needs to be built and installed. This can, e.g., be done via:
 
 ```shell
-make install_cubature
+make install_cubature CXX=g++-14
 # make sure to add the printed line to your shell's rc file
 ```
 

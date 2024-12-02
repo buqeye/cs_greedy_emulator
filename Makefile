@@ -33,13 +33,11 @@ clean :
 	@rm -f $(OBJ) *.so cpot.cpp
 
 install_cubature:
-	export MYLOCAL=${HOME}/src
-	mkdir -p ${MYLOCAL}
+	mkdir -p $(MYLOCAL)
 	git clone git@github.com:stevengj/cubature.git ${MYLOCAL}/cubature
-	cp src/Makefile_cubature_repl ${MYLOCAL}/cubature
-	make -C ${MYLOCAL}/cubature
-	make -C ${MYLOCAL}/cubature PREFIX=${MYLOCAL}
-	echo "add the line 'export MYLOCAL=${HOME}/src' to your shell rc-file [e.g., in `~/zshrc`]."
+	cp src/Makefile_cubature_repl ${MYLOCAL}/cubature/Makefile
+	$(MAKE) -C ${MYLOCAL}/cubature CXX=${CXX}
+	$(MAKE) -C ${MYLOCAL}/cubature install PREFIX=${MYLOCAL}
 
 BACKUP:=backup_evc_`date +"%Y-%m-%d"`.zip
 backup :
