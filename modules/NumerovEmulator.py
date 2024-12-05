@@ -3,6 +3,7 @@ import numpy as np
 from Grid import Grid
 from Numerov import numerov,  EverythingAllAtOnceNumerov, EverythingAllAtOnceNumerovNoMatch
 from scipy.linalg import orth, qr, qr_insert, LinAlgError
+from RseSolver import free_solutions_F_G
 
 
 class EverythingAllAtOnceNumerovROM:
@@ -862,7 +863,7 @@ class AllAtOnceNumerov:
     """
     implements the GROM and LSPG ROM based on the matrix Numerov method ("all-at-once Numerov").
     It uses the `AllAtOnceNumerov` implementation, which has only the sampled
-    wave function in the solution vector, not (a,b) or some scattering matrx.
+    wave function in the solution vector, not (a,b) or some scattering matrix.
     This emulator is real-valued for real-valued potentials.
     """
     def __init__(self, scattExp, grid, free_lecs, 
@@ -872,6 +873,7 @@ class AllAtOnceNumerov:
                  greedy_max_iter=5, 
                  mode="linear",
                  emulator_training_mode="grom",
+                 num_pts_fit_asympt_limit=25,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -886,9 +888,15 @@ class AllAtOnceNumerov:
         self.mode = mode
         assert emulator_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
         self.emulator_training_mode = emulator_training_mode
+        self.num_pts_fit_asympt_limit = num_pts_fit_asympt_limit
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
+        self.mask_fit_asympt_limit = np.concatenate((np.zeros(grid.getNumPointsTotal - self.num_pts_fit_asympt_limit), 
+                                                    np.ones(self.num_pts_fit_asympt_limit))).astype(bool)
+        self.design_matrix_FG = free_solutions_F_G(l=self.scattExp.l, r=grid.points[self.mask_fit_asympt_limit], 
+                                                   p=self.scattExp.p, derivative=False) / self.scattExp.p
+        self.emulated_a_b_offset = np.array([float(self.inhomogeneous), 0.])
 
         # FOM solver (all-at-once Numerov)
         self.inhomogeneous = True
@@ -994,7 +1002,7 @@ class AllAtOnceNumerov:
         if update_offline_stage:
             self.update_offline_stage()
 
-    def update_offline_stage(self, verbose=True):
+    def update_offline_stage(self, update_matrix_asympt_limit=True, verbose=True):
         # Note: when adding snapshots to the emulator basis, one does not need to recompute all tensors again,
         # rather one can update them for computational efficiency. Since this update only occurs in the offline 
         # stage of the emulator, we keep it in this proof-of-principle work simple and compute the tensors from scratch
@@ -1039,6 +1047,11 @@ class AllAtOnceNumerov:
         self.A_tilde_lspg = Y_tensor_dagger @ A_tensor_x_X_red
         self.s_tilde_lspg = np.tensordot(Y_tensor_dagger, S_tensor, axes=[1,1]).T
 
+        # emulator equation
+        if update_matrix_asympt_limit:
+            self.matrix_asympt_limit = np.linalg.lstsq(self.design_matrix_FG, 
+                                                       X_red[self.mask_lsqfit_matching,:], rcond=None)[0] 
+
     def simulate(self, lecList):
         return self.numerov_solver.solve(lecList)
 
@@ -1072,7 +1085,13 @@ class AllAtOnceNumerov:
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
         coeffs_all = np.column_stack(coeffs_all)
         emulated_sols = self.snapshot_matrix @ coeffs_all
-            
+        # TODO: check initial conditions!
+        # TODO: transform wave functions (matching)?
+
+        emulated_a_b = self.matrix_asympt_limit @ coeffs_all
+        if self.inhomogeneous:
+            emulated_a_b[0, :] += 1.
+
         if estimate_norm_residual:
             num_norm_residuals = len(lecList)
             norm_residuals = np.empty(num_norm_residuals)
@@ -1100,15 +1119,18 @@ class AllAtOnceNumerov:
         else:
             return emulated_sols
 
-    def get_S_matrix(self, sols):
+    @staticmethod
+    def get_S_matrix(a_b_array):
         ret = []
-        for sol in sols.T:
-            a = sol[-2] + float(self.inhomogeneous)
-            b = sol[-1]
+        for a, b in a_b_array.T:
             num = a + 1j*b
             denom = a - 1j*b
             ret.append(num / denom)
-        return np.array(ret)            
+        return np.array(ret)
+    
+    @staticmethod
+    def get_phase_shift(a_b_array):
+        return np.degrees(np.arctan2(a_b_array[1,:], a_b_array[0,:]))
 
     def reconstruct_norm_residual(self, lecs, coeffs):
         lecs_H = lecs.conjugate().T
@@ -1283,4 +1305,9 @@ class AllAtOnceNumerov:
         else:
             raise NotADirectoryError(f"Approach '{self.approach}' is unknown.")
 
-        self.update_offline_stage()
+        # update offline stage given the new snapshot matrix
+        # for performance optimization, we add one column to `matrix_asympt_limit` manually,
+        # instead of letting `update_offline_stage` recompute it completely.
+        self.update_offline_stage(update_matrix_asympt_limit=False)
+        to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, fom_sol, rcond=None)[0] 
+        self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
