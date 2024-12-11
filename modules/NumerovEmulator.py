@@ -21,6 +21,7 @@ class AllAtOnceNumerovROM:
                  greedy_max_iter=5, 
                  mode="linear",
                  emulator_training_mode="grom",
+                 inhomogeneous=True,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -40,7 +41,7 @@ class AllAtOnceNumerovROM:
         self.coercivity_constant = 1.
 
         # FOM solver (all-at-once Numerov)
-        self.inhomogeneous = True
+        self.inhomogeneous = inhomogeneous
         rseParams = {"grid": grid, 
                      "scattExp": scattExp, 
                      "potential": scattExp.potential, 
@@ -454,6 +455,7 @@ class MatrixNumerovROM_ab:
                  greedy_max_iter=5, 
                  mode="linear",
                  emulator_training_mode="grom",
+                 inhomogeneous=True,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -473,7 +475,7 @@ class MatrixNumerovROM_ab:
         self.coercivity_constant = 1.
 
         # FOM solver (all-at-once Numerov)
-        self.inhomogeneous = True
+        self.inhomogeneous = inhomogeneous
         rseParams = {"grid": grid, 
                      "scattExp": scattExp, 
                      "potential": scattExp.potential, 
@@ -892,6 +894,7 @@ class MatrixNumerovROM:
                  mode="linear",
                  emulator_training_mode="grom",
                  num_pts_fit_asympt_limit=25,
+                 inhomogeneous=True,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -910,7 +913,7 @@ class MatrixNumerovROM:
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
-        self.inhomogeneous = True
+        self.inhomogeneous = inhomogeneous
         self.mask_fit_asympt_limit = np.concatenate((np.zeros(grid.getNumPointsTotal - self.num_pts_fit_asympt_limit), 
                                                     np.ones(self.num_pts_fit_asympt_limit))).astype(bool)
         self.design_matrix_FG = free_solutions_F_G(l=self.scattExp.l, r=grid.points[self.mask_fit_asympt_limit], 
