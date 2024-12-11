@@ -1124,13 +1124,14 @@ class MatrixNumerovROM:
             coeffs_all.append(coeffs_curr)
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
         coeffs_all = np.array(coeffs_all).T
-        if which == "K":
+        
+        if which in ("K", "S"):
             ab_arr = self.matrix_asympt_limit @ coeffs_all
-            emulated_sols = self.snapshot_matrix @ coeffs_all
-            ab_arr2 = np.linalg.lstsq(self.design_matrix_FG, 
-                                    emulated_sols[self.mask_fit_asympt_limit,:], rcond=None)[0] 
-            print("diff", ab_arr2-ab_arr)
             return self.get_scattering_matrix(ab_arr, which=which)
+            # alternatively, one could use the following options:
+            # relevant_sols = self.snapshot_matrix[self.mask_fit_asympt_limit,:] @ coeffs_all
+            # ab_arr = np.linalg.lstsq(self.design_matrix_FG, relevant_sols, rcond=None)[0]
+            # ab_arr = np.linalg.pinv(self.design_matrix_FG) @ relevant_sols
         else:
             emulated_sols = self.snapshot_matrix @ coeffs_all
         # TODO: check initial conditions!
