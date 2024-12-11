@@ -1,15 +1,15 @@
 from RseSolver import RseSolver
 import numpy as np
 from Grid import Grid
-from Numerov import numerov,  EverythingAllAtOnceNumerov, EverythingAllAtOnceNumerovNoMatch
+from Numerov import numerov,  MatrixNumerov_ab, MatrixNumerov, AllAtOnceNumerov
 from scipy.linalg import orth, qr, qr_insert, LinAlgError
 from RseSolver import free_solutions_F_G
 
 
-class EverythingAllAtOnceNumerovROM:
+class AllAtOnceNumerovROM:
     """
     implements the GROM and LSPG ROM based on the matrix Numerov method ("all-at-once Numerov").
-    It uses the `EverythingAllAtOnceNumerov` implementation, which has the `T` matrix as the last component
+    It uses the `AllAtOnceNumerov` implementation, which has the `T` matrix as the last component
     in the solution vector. This emulator is complex-valued for real-valued potentials.
 
     The implementation mimicks the one in `AffineROM`. It is meant only for benchmarks.
@@ -48,9 +48,9 @@ class EverythingAllAtOnceNumerovROM:
                      }
         from RseSolver import g_s_affine
         self.y0 = 0.
-        self.numerov_solver = EverythingAllAtOnceNumerov(self.grid.points, 
-                                                         g=None, g_s=g_s_affine, 
-                                                         y0=self.y0, params=rseParams)
+        self.numerov_solver = AllAtOnceNumerov(self.grid.points, 
+                                               g=None, g_s=g_s_affine, 
+                                               y0=self.y0, params=rseParams)
         self.n_theta = self.numerov_solver.n_theta
         
         # training
@@ -187,10 +187,22 @@ class EverythingAllAtOnceNumerovROM:
         self.A_tilde_lspg = Y_tensor_dagger @ A_tensor_x_X_red
         self.s_tilde_lspg = np.tensordot(Y_tensor_dagger, S_tensor, axes=[1,1]).T
 
-    def simulate(self, lecList):
-        return self.numerov_solver.solve(lecList)
+    def get_scattering_matrix(self, sols_row, which="T"):
+        if which == "T":
+            return sols_row
+        elif which == "S":
+            return 1 + 2j * sols_row      
+        elif which == "K":
+            return sols_row / (1 + 1j * sols_row)     
+        else:
+            raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
-    def emulate(self, lecList, estimate_norm_residual=False, mode="grom",
+    def simulate(self, lecList, which="all"):
+        full_sols = self.numerov_solver.solve(lecList)
+        return full_sols if which == "all" else self.get_scattering_matrix(full_sols[-1,:], which=which)
+
+    def emulate(self, lecList, which="all",
+                estimate_norm_residual=False, mode="grom",
                 calc_error_bounds=False, calibrate_norm_residual=False,
                 cond_number_threshold=None, self_test=True, 
                 lspg_rcond=None, lspg_solver="svd"):
@@ -218,9 +230,13 @@ class EverythingAllAtOnceNumerovROM:
                     coeffs_curr = np.linalg.solve(R, Q.conjugate().T @ s_tilde)  # Solve Rx = Q^dagger s_tilde
             coeffs_all.append(coeffs_curr)
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
-        coeffs_all = np.column_stack(coeffs_all)
-        emulated_sols = self.snapshot_matrix @ coeffs_all
-            
+        coeffs_all = np.array(coeffs_all).T
+        if which != "all":
+            emulated_Ts = self.snapshot_matrix[-1,:] @ coeffs_all
+            return self.get_scattering_matrix(emulated_Ts, which=which)
+        else:
+            emulated_sols = self.snapshot_matrix @ coeffs_all
+
         if estimate_norm_residual:
             num_norm_residuals = len(lecList)
             norm_residuals = np.empty(num_norm_residuals)
@@ -231,7 +247,7 @@ class EverythingAllAtOnceNumerovROM:
             if self_test or calc_error_bounds:
                 norm_residuals_FOM = np.empty(num_norm_residuals)
                 for ilecs, lecs in enumerate(lecList):
-                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[2:,ilecs], lecs, squared=False,
+                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[1:,ilecs], lecs, squared=False,
                                                                                       calc_error_bounds=calc_error_bounds)
                     error_bounds.append(bounds)  # may be None
                 error_bounds = np.array(error_bounds)
@@ -247,13 +263,6 @@ class EverythingAllAtOnceNumerovROM:
             return emulated_sols, norm_residuals, error_bounds    
         else:
             return emulated_sols
-
-    def get_S_matrix(self, sols):
-        ret = []
-        for sol in sols.T:
-            T = sol[-1] / 2 if self.inhomogeneous else sol[-1]
-            ret.append(1 + 2j * T)
-        return np.array(ret)            
 
     def reconstruct_norm_residual(self, lecs, coeffs):
         lecs_H = lecs.conjugate().T
@@ -431,10 +440,10 @@ class EverythingAllAtOnceNumerovROM:
         self.update_offline_stage()
 
 
-class AllAtOnceNumerov:
+class MatrixNumerovROM_ab:
     """
     implements the GROM and LSPG ROM based on the matrix Numerov method ("all-at-once Numerov").
-    It uses the `EverythingAllAtOnceNumerovNoMatch` implementation, which has (a,b) explicitly 
+    It uses the `AllAtOnceNumerov_ab` implementation, which has (a,b) explicitly 
     in the solution vector, not (a,b) or some scattering matrix.
     This emulator is real-valued for real-valued potentials.
     """
@@ -471,11 +480,11 @@ class AllAtOnceNumerov:
                      "inhomogeneous": self.inhomogeneous
                      }
         from RseSolver import g_s_affine
-        self.numerov_solver = EverythingAllAtOnceNumerovNoMatch(self.grid.points, 
-                                                                g=None, g_s=g_s_affine, 
-                                                                y0=0., 
-                                                                y1=(0. if self.inhomogeneous else 1.), 
-                                                                params=rseParams)
+        self.numerov_solver = MatrixNumerov_ab(self.grid.points, 
+                                               g=None, g_s=g_s_affine, 
+                                               y0=0., 
+                                               y1=(0. if self.inhomogeneous else 1.), 
+                                               params=rseParams)
         self.n_theta = self.numerov_solver.n_theta
         
         # training
@@ -612,10 +621,25 @@ class AllAtOnceNumerov:
         self.A_tilde_lspg = Y_tensor_dagger @ A_tensor_x_X_red
         self.s_tilde_lspg = np.tensordot(Y_tensor_dagger, S_tensor, axes=[1,1]).T
 
-    def simulate(self, lecList):
-        return self.numerov_solver.solve(lecList)
+    def get_scattering_matrix(self, sols_rows, which="T"):
+        ab_arr = np.copy(sols_rows)
+        if self.inhomogeneous:
+            ab_arr[0, :] += 1
+        if which == "S":
+            num = ab_arr[0, :] + 1j*ab_arr[1, :]
+            denom = ab_arr[0, :] - 1j*ab_arr[1, :]
+            return num / denom
+        elif which == "K":
+            return ab_arr[1, :] / ab_arr[0, :]  # b / a 
+        else:
+            raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
-    def emulate(self, lecList, estimate_norm_residual=False, mode="grom",
+    def simulate(self, lecList, which="all"):
+        full_sols = self.numerov_solver.solve(lecList)
+        return full_sols if which == "all" else self.get_scattering_matrix(full_sols[-2:,:], which=which)
+
+    def emulate(self, lecList, which="all", 
+                estimate_norm_residual=False, mode="grom",
                 calc_error_bounds=False, calibrate_norm_residual=False,
                 cond_number_threshold=None, self_test=True, 
                 lspg_rcond=None, lspg_solver="svd"):
@@ -643,8 +667,12 @@ class AllAtOnceNumerov:
                     coeffs_curr = np.linalg.solve(R, Q.conjugate().T @ s_tilde)  # Solve Rx = Q^dagger s_tilde
             coeffs_all.append(coeffs_curr)
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
-        coeffs_all = np.column_stack(coeffs_all)
-        emulated_sols = self.snapshot_matrix @ coeffs_all
+        coeffs_all = np.array(coeffs_all).T
+        if which != "all":
+            emulated_Ts = self.snapshot_matrix[-2:,:] @ coeffs_all
+            return self.get_scattering_matrix(emulated_Ts, which=which)
+        else:
+            emulated_sols = self.snapshot_matrix @ coeffs_all
             
         if estimate_norm_residual:
             num_norm_residuals = len(lecList)
@@ -671,17 +699,7 @@ class AllAtOnceNumerov:
 
             return emulated_sols, norm_residuals, error_bounds    
         else:
-            return emulated_sols
-
-    def get_S_matrix(self, sols):
-        ret = []
-        for sol in sols.T:
-            a = sol[-2] + float(self.inhomogeneous)
-            b = sol[-1]
-            num = a + 1j*b
-            denom = a - 1j*b
-            ret.append(num / denom)
-        return np.array(ret)            
+            return emulated_sols       
 
     def reconstruct_norm_residual(self, lecs, coeffs):
         lecs_H = lecs.conjugate().T
@@ -859,10 +877,10 @@ class AllAtOnceNumerov:
         self.update_offline_stage()
 
 
-class AllAtOnceNumerov:
+class MatrixNumerovROM:
     """
     implements the GROM and LSPG ROM based on the matrix Numerov method ("all-at-once Numerov").
-    It uses the `AllAtOnceNumerov` implementation, which has only the sampled
+    It uses the `MatrixNumerov` implementation, which has only the sampled
     wave function in the solution vector, not (a,b) or some scattering matrix.
     This emulator is real-valued for real-valued potentials.
     """
@@ -892,25 +910,24 @@ class AllAtOnceNumerov:
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
+        self.inhomogeneous = True
         self.mask_fit_asympt_limit = np.concatenate((np.zeros(grid.getNumPointsTotal - self.num_pts_fit_asympt_limit), 
                                                     np.ones(self.num_pts_fit_asympt_limit))).astype(bool)
         self.design_matrix_FG = free_solutions_F_G(l=self.scattExp.l, r=grid.points[self.mask_fit_asympt_limit], 
                                                    p=self.scattExp.p, derivative=False) / self.scattExp.p
-        self.emulated_a_b_offset = np.array([float(self.inhomogeneous), 0.])
-
+        
         # FOM solver (all-at-once Numerov)
-        self.inhomogeneous = True
         rseParams = {"grid": grid, 
                      "scattExp": scattExp, 
                      "potential": scattExp.potential, 
                      "inhomogeneous": self.inhomogeneous
                      }
         from RseSolver import g_s_affine
-        self.numerov_solver = AllAtOnceNumerov(self.grid.points, 
-                                               g=None, g_s=g_s_affine, 
-                                               y0=0., 
-                                               y1=(0. if self.inhomogeneous else 1.), 
-                                               params=rseParams)
+        self.numerov_solver = MatrixNumerov(self.grid.points, 
+                                            g=None, g_s=g_s_affine, 
+                                            y0=0., 
+                                            y1=(0. if self.inhomogeneous else 1.), 
+                                            params=rseParams)
         self.n_theta = self.numerov_solver.n_theta
         
         # training
@@ -1050,12 +1067,32 @@ class AllAtOnceNumerov:
         # emulator equation
         if update_matrix_asympt_limit:
             self.matrix_asympt_limit = np.linalg.lstsq(self.design_matrix_FG, 
-                                                       X_red[self.mask_lsqfit_matching,:], rcond=None)[0] 
+                                                       X_red[self.mask_fit_asympt_limit[2:],:], rcond=None)[0] 
+        
+    def get_scattering_matrix(self, sols_rows, which="K"):
+        ab_arr = np.copy(sols_rows)
+        if self.inhomogeneous:
+            ab_arr[0, :] += self.scattExp.p
+        if which == "S":
+            num = ab_arr[0, :] + 1j*ab_arr[1, :]
+            denom = ab_arr[0, :] - 1j*ab_arr[1, :]
+            return num / denom
+        elif which == "K":
+            return ab_arr[1, :] / ab_arr[0, :]  # b / a 
+        else:
+            raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
-    def simulate(self, lecList):
-        return self.numerov_solver.solve(lecList)
+    def simulate(self, lecList, which="all"):
+        full_sols = self.numerov_solver.solve(lecList)
+        if which == "all":
+            return full_sols
+        else:
+            ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
+                                     full_sols[self.mask_fit_asympt_limit,:], rcond=None)[0] 
+            return self.get_scattering_matrix(ab_arr, which=which)
 
-    def emulate(self, lecList, estimate_norm_residual=False, mode="grom",
+    def emulate(self, lecList, which="all", 
+                estimate_norm_residual=False, mode="grom",
                 calc_error_bounds=False, calibrate_norm_residual=False,
                 cond_number_threshold=None, self_test=True, 
                 lspg_rcond=None, lspg_solver="svd"):
@@ -1083,8 +1120,16 @@ class AllAtOnceNumerov:
                     coeffs_curr = np.linalg.solve(R, Q.conjugate().T @ s_tilde)  # Solve Rx = Q^dagger s_tilde
             coeffs_all.append(coeffs_curr)
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
-        coeffs_all = np.column_stack(coeffs_all)
-        emulated_sols = self.snapshot_matrix @ coeffs_all
+        coeffs_all = np.array(coeffs_all).T
+        if which == "K":
+            ab_arr = self.matrix_asympt_limit @ coeffs_all
+            emulated_sols = self.snapshot_matrix @ coeffs_all
+            ab_arr2 = np.linalg.lstsq(self.design_matrix_FG, 
+                                    emulated_sols[self.mask_fit_asympt_limit,:], rcond=None)[0] 
+            print("diff", ab_arr2-ab_arr)
+            return self.get_scattering_matrix(ab_arr, which=which)
+        else:
+            emulated_sols = self.snapshot_matrix @ coeffs_all
         # TODO: check initial conditions!
         # TODO: transform wave functions (matching)?
 

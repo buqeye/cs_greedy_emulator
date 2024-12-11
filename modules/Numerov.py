@@ -10,7 +10,7 @@ def diag_ord_form_to_mat(ab, ab_l_and_u, toarray=False):
     return spmat.toarray() if toarray else spmat.tocsc()
 
 
-class AllAtOnceNumerov:
+class MatrixNumerov:
     """
     implements the matrix-based Numerov method with y = {y_2, ..., y_N} and given y_0 and y_1. 
     This method does not impose any asymptotic limit parametrization.
@@ -129,7 +129,7 @@ class AllAtOnceNumerov:
         return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
-class EverythingAllAtOnceNumerov:
+class AllAtOnceNumerov:
     """
     implements the matrix-based Numerov method with y = {y_1, y_2, ..., y_N, T} and given y_0. note that
     y_1 is in the solution vector and does not require an initial value. This Numerov method is complex-valued.
@@ -165,7 +165,7 @@ class EverythingAllAtOnceNumerov:
         l = params["scattExp"].l
         F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
 
-        Hplus = F_G[:, 1] + 1j*F_G[:, 0]  # G + F
+        Hplus = F_G[:, 1] + 1j*F_G[:, 0]  # G + 1j*F
 
         # build rhs vector s
         mask = np.outer([1., 10., 1.], np.ones(self.N+1, dtype=np.complex128))
@@ -248,7 +248,7 @@ class EverythingAllAtOnceNumerov:
         return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
-class EverythingAllAtOnceNumerovNoMatch:
+class MatrixNumerov_ab:
     """
     implements the matrix-based Numerov method with y = {y_2, ..., y_N, a, b} and given y_0 and y_1.
     The two components (a, b) correspond to the asymptotic limit parametrization a F + b G. The parameters 
