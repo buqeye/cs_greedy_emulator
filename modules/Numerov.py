@@ -172,7 +172,7 @@ class AllAtOnceNumerov:
         mat = spdiags(mask, diags=(0,1,2), m=self.N+1, n=self.N+1)
         mat = self.step_fac * mat @ self.sn 
         mat[-2:, :] = 0.
-        mat[-2:, 0] = 0. if params["inhomogeneous"] else F_G[:, 0]
+        mat[-2:, 0] = (1. - (p if params["inhomogeneous"] else 0.)) * F_G[:, 0]
         self.S_tensor = mat.T
 
         if self_test:
@@ -180,7 +180,7 @@ class AllAtOnceNumerov:
             rhs[:,:-2] = self.step_fac * np.array([self.sn[n,:] 
                                                 + 10*self.sn[n-1,:] 
                                                 + self.sn[n-2,:] for n in range(2, self.N+1)]).T
-            rhs[0,-2:] = 0. if params["inhomogeneous"] else F_G[:, 0].T
+            rhs[0,-2:] = (1. - (p if params["inhomogeneous"] else 0.)) * F_G[:, 0].T
             assert np.allclose(self.S_tensor, rhs, atol=1e-14, rtol=0.), "inconsistent S_tensor"
 
         # build matrix in diagonal ordered form
@@ -200,7 +200,8 @@ class AllAtOnceNumerov:
         
         ## third row
         ab[:, 2, :self.N-2] = self.step_fac * self.gn[1:self.N-1,:].T
-        ab[0, 2, :-1] += 1.
+        ab[0, 2, :-3] += 1.
+        ab[0, 2, -3:-1] = p
 
         ## last column 
         # ab[0, :2, -1] = -F_G[:, 1]
