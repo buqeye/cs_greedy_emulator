@@ -1134,7 +1134,11 @@ class MatrixNumerovROM:
             # ab_arr = np.linalg.pinv(self.design_matrix_FG) @ relevant_sols
         else:
             emulated_sols = self.snapshot_matrix @ coeffs_all
-        # TODO: check initial conditions!
+        
+        # enforce initial conditions
+        # emulated_sols[0, :] = self.numerov_solver.y0
+        # emulated_sols[1, :] = self.numerov_solver.y1
+
         # TODO: transform wave functions (matching)?
 
         emulated_a_b = self.matrix_asympt_limit @ coeffs_all
