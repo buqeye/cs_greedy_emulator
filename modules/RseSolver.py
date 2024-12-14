@@ -268,14 +268,14 @@ class RseSolver:
                           "inhomogeneous": inhomogeneous}
         
         # setup Numerov solver (for affine parameter dependences)
-        from Numerov import AllAtOnceNumerov
+        from Numerov import MatrixNumerov
         r0 = self.grid.points[0]
         r1 = self.grid.points[1]
         l = self.scattExp.l
         y1 = 0. if inhomogeneous else 1.  # can be scaled by an arbitrary constant
         y0 = y1 * (r0/r1)**(l+1)
-        self.numerov_solver = AllAtOnceNumerov(xn=grid.points, y0=y0, y1=y1, 
-                                               g=None, g_s=g_s_affine, params=self.rseParams)
+        self.numerov_solver = MatrixNumerov(xn=grid.points, y0=y0, y1=y1, self_test=False,
+                                            g=None, g_s=g_s_affine, params=self.rseParams)
     
     @property
     def potential(self):
