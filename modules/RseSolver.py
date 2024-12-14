@@ -306,7 +306,7 @@ class RseSolver:
 
         sol = solve_ivp(self._rse_coupled_ode, 
                         (params["grid"].start, params["grid"].end), 
-                        [complex(y0), complex(yp0)],
+                        (y0, yp0),
                         method=params["method"], 
                         args=(rseParams,), 
                         t_eval=params["grid"].points, 
@@ -343,7 +343,7 @@ class RseSolver:
                                                 y1=self.numerov_solver.y1, 
                                                 s=s if self.inhomogeneous else None, 
                                                 g=g, params=rseParams)
-                    u_array.append(u.astype(complex))
+                    u_array.append(u)  # u.astype(complex)
             else:
                 uprime_array = []
                 for lecs in lecList_dict:
@@ -382,7 +382,6 @@ class RseSolver:
 
     
 def g(r, params):
-
     l = params["scattExp"].l
     mu = params["scattExp"].mu
     E = params["scattExp"].en
