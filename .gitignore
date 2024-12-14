@@ -2,6 +2,7 @@ __pycache__
 .vscode
 *.pdf
 *.png
+*.csv
 .DS_Store
 .idea/
 venv
