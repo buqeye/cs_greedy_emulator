@@ -239,7 +239,7 @@ class ScatteringSolution:
             L = np.mean(L_arr)
         elif method == "lsqfit":
             assert num_pts >= 2, "the number of points for matching has to be >= 2, got {num_pts}"
-            a, b = np.linalg.lstsq(phi[-num_pts:,:2], self.u[-num_pts:], rcond=None)[0] 
+            a, b = np.linalg.lstsq(anc*phi[-num_pts:,:2], self.u[-num_pts:], rcond=None)[0] 
             scale = 1 / a
             Kmat = b * scale
             L = Kmat if param == "K" else LMatrix("K", value=Kmat).valueAs(param)
@@ -365,7 +365,7 @@ class RseSolver:
                                           f=u_array[:,ilecs], 
                                           fprime=uprime_array[:,ilecs], 
                                           f_lbl=self.u_lbl, 
-                                          anc=1., # /self.scattExp.p,
+                                          anc=1./self.scattExp.p,
                                           Llbl=asympParam,
                                           matching=matching)
             scattSols.append(scattSol)

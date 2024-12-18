@@ -918,6 +918,8 @@ class MatrixNumerovROM:
                                                     np.ones(self.num_pts_fit_asympt_limit))).astype(bool)
         self.design_matrix_FG = free_solutions_F_G(l=self.scattExp.l, r=grid.points[self.mask_fit_asympt_limit], 
                                                    p=self.scattExp.p, derivative=False) / self.scattExp.p
+        self.F_grid = free_solutions_F_G(l=self.scattExp.l, r=grid.points, 
+                                         p=self.scattExp.p, derivative=False)[:, 0]  # could be improved together with the lines above
         
         # FOM solver (all-at-once Numerov)
         rseParams = {"grid": grid, 
@@ -1082,6 +1084,8 @@ class MatrixNumerovROM:
             return num / denom
         elif which == "K":
             return ab_arr[1, :] / ab_arr[0, :]  # b / a 
+        elif which == "u": 
+            return (full_sols + self.F_grid[:, np.newaxis]) / ab_arr[0, :]
         else:
             raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
@@ -1092,7 +1096,10 @@ class MatrixNumerovROM:
         else:
             ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
                                      full_sols[self.mask_fit_asympt_limit,:], rcond=None)[0] 
-            return self.get_scattering_matrix(ab_arr, which=which)
+            if self.inhomogeneous:
+                ab_arr[0, :] += self.scattExp.p
+            return (full_sols + self.F_grid[:, np.newaxis]) / ab_arr[0, :]
+            # return self.get_scattering_matrix(ab_arr, which=which)
 
     def emulate(self, lecList, which="all", 
                 estimate_norm_residual=False, mode="grom",
