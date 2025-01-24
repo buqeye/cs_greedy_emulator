@@ -8,7 +8,7 @@ double V0(double k, double kk, int pot, int S, int L, int LL, int J, int channel
 double Vplocal(double k, double kk, int pot, Channel *chan, Lecs *lecs);
 void Vplocal_affine(double k, double kk, int pot, Channel *chan, double *ret);
 
-double Vrlocal(double r, int pot, Channel *channel, Lecs *lecs);
-void Vrlocal_affine(double r, int pot, Channel *chan, double *ret);
+double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs, double ampi);
+void Vrlocal_affine(double r, int pot, Channel *chan, double ampi, double *ret);
 
 #endif // LOCALGT_POTENTIAL

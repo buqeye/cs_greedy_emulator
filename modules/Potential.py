@@ -180,13 +180,13 @@ def chiral(x, chan, use_default_lec_values=False, **kwargs):
     else:
         lecs = chiralPot.Lecs(kwargs["CS"], kwargs["CT"], kwargs["C1"], kwargs["C2"], kwargs["C3"], kwargs["C4"],
                             kwargs["C5"], kwargs["C6"], kwargs["C7"], kwargs["CNN"], kwargs["CPP"])
-    return chiralPot.Vrlocal(x, potId, channel, lecs)
+    return chiralPot.Vrlocal(x, potId, channel, lecs, kwargs["mpi"])
 
 def chiral_affine(x, chan, **kwargs):
     channel = chiralPot.Channel(S=chan.S, L=chan.L, LL=chan.LL, J=chan.J, channel=chan.channel)
     potId = kwargs["potId"]  # 213  # [order][cutoff][sfr cutoff]
     ret = np.zeros(12, dtype=np.double)
-    chiralPot.Vrlocal_affine(x, potId, channel, ret)
+    chiralPot.Vrlocal_affine(x, potId, channel, kwargs["mpi"], ret)
     return ret
 
 def chiralms(k, kk, chan, use_default_lec_values=False, **kwargs):

@@ -74,12 +74,12 @@ def Vplocal_affine(k, kk, pot, chan, ret):  # 'ret' is a one-dimensional numpy a
     cpot.Vplocal_affine(k, kk, pot, cchan, &ret_memview[0])
     return ret
 
-def Vrlocal(r, pot, chan, lecs):
+def Vrlocal(r, pot, chan, lecs, ampi):
   cchan = <cpot.Channel *> PyCapsule_GetPointer(chan, "Channel")
   clecs = <cpot.Lecs *> NULL if lecs is None else <cpot.Lecs *> PyCapsule_GetPointer(lecs, "Lecs") 
-  return cpot.Vrlocal(r, pot, cchan, clecs)
+  return cpot.Vrlocal(r, pot, cchan, clecs, ampi)
 
-def Vrlocal_affine(r, pot, chan, ret):  # 'ret' is a one-dimensional numpy array
+def Vrlocal_affine(r, pot, chan, ampi, ret):  # 'ret' is a one-dimensional numpy array
     """ 
     see https://docs.cython.org/en/latest/src/userguide/memoryviews.html#pass-data-from-a-c-function-via-pointer
     """
@@ -87,5 +87,5 @@ def Vrlocal_affine(r, pot, chan, ret):  # 'ret' is a one-dimensional numpy array
     if not ret.flags['C_CONTIGUOUS']:
         ret = np.ascontiguousarray(ret)  # Makes a contiguous copy of the numpy array.
     cdef double[::1] ret_memview = ret
-    cpot.Vrlocal_affine(r, pot, cchan, &ret_memview[0])
+    cpot.Vrlocal_affine(r, pot, cchan, ampi, &ret_memview[0])
     return ret

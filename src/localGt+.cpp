@@ -794,10 +794,38 @@ void set_global_lec_values(int cutoff, int lam, int order){
 }
 
 
+void set_mpi_fpi(double ampi){
+      if(ampi > 0){
+    double mpi_phys = 138.03; // MeV
+    double f_theta = (ampi * ampi) / (mpi_phys * mpi_phys);  // dimless
+    double sigma_N = 50. ; // MeV
+    double delta_sigma_N = 1. ; // MeV
+
+    // set pion mass(es) in inv fm
+    mpi = ampi / hbarc;
+    mpin = ampi / hbarc;
+    mpich = ampi / hbarc;
+
+   // set nucleon mass(es) in MeV
+   double Mneu_phys = 939.56563;  // neutron mass in MeV
+   double Mpro_phys = 938.27205;  // proton mass in MeV
+   
+   Mneu = Mneu_phys + sigma_N * (f_theta - 1.) * (1 - delta_sigma_N/(sigma_N * f_theta));
+   Mpro = Mpro_phys + sigma_N * (f_theta - 1.) * (1 + delta_sigma_N/(sigma_N * f_theta));
+   Mn = 0.5 * (Mneu + Mpro);
+
+// set fpi in inv fm
+    double f_chiral = 86.2 ; // MeV
+    double lbar4 = 4.3;
+    double tmp = ampi / (4. * f_chiral * pi);
+    fpi = f_chiral * (1 + tmp*tmp * lbar4) / hbarc;
+    }
+}
+
 /*********************************** Coordinate space ****************************************/
 
 // return V(r) for a given channel and set of NN LECs
-double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs)
+double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs, double ampi)
 {
   int S=chan->S; int L=chan->L; int LL=chan->LL;
   int J=chan->J; int channel=chan->channel;
@@ -807,6 +835,8 @@ double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs)
   //            y-> cutoff: 0.8=0, 1.0=1, 1.2=2, 0.9=3, 1.1=4
   //            z-> SFR cutoff: 800=2, 1000=3, 1200=4, 1400=5
   // Channel: nn -> -1, np -> 0, pp -> 1
+
+  set_mpi_fpi(ampi);
 
   int order_in, cutoff_in, lambda_in;
   double ret;
@@ -889,7 +919,7 @@ double Vrlocal(double r, int pot, Channel *chan, Lecs *lecs)
 }
 
 // return V(r) for a given channel and set of NN LECs
-void Vrlocal_affine(double r, int pot, Channel *chan, double *ret)
+void Vrlocal_affine(double r, int pot, Channel *chan, double ampi, double *ret)
 {
   int S=chan->S; int L=chan->L; int LL=chan->LL;
   int J=chan->J; int channel=chan->channel;
@@ -899,6 +929,8 @@ void Vrlocal_affine(double r, int pot, Channel *chan, double *ret)
   //            y-> cutoff: 0.8=0, 1.0=1, 1.2=2, 0.9=3, 1.1=4
   //            z-> SFR cutoff: 800=2, 1000=3, 1200=4, 1400=5
   // Channel: nn -> -1, np -> 0, pp -> 1
+
+  set_mpi_fpi(ampi);
 
   int order_in, cutoff_in, lambda_in;
   double internal_output[16] = {};
