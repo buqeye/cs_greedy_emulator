@@ -921,6 +921,21 @@ class MatrixNumerovROM:
         self.F_grid = free_solutions_F_G(l=self.scattExp.l, r=grid.points, 
                                          p=self.scattExp.p, derivative=False)[:, 0]  # could be improved together with the lines above
         
+        S = np.zeros((grid.getNumPointsTotal, self.num_pts_fit_asympt_limit))
+        count = 0
+        for ielem, elem in enumerate(self.mask_fit_asympt_limit):
+            if elem:
+                S[ielem, count] = 1
+                count += 1
+        print("shape of new matrix", np.linalg.pinv(self.design_matrix_FG).shape)
+        print("norm of new matrix", np.linalg.norm(np.linalg.pinv(self.design_matrix_FG) @ S.T, ord=2))
+
+        S2 = np.zeros_like(S)
+        print(S2[self.mask_fit_asympt_limit,:].shape)
+        S2[self.mask_fit_asympt_limit, :] = np.eye(self.num_pts_fit_asympt_limit)
+
+        print("close", np.allclose(S, S2))
+
         # FOM solver (all-at-once Numerov)
         rseParams = {"grid": grid, 
                      "scattExp": scattExp, 
