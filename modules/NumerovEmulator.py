@@ -1002,7 +1002,7 @@ class MatrixNumerovROM:
             self.update_offline_stage()
             print(f"Snapshot matrix not orthonormalized. Consider using `approach='orth'`")
         else:
-            raise NotADirectoryError(f"Approach '{self.approach}' is unknown.")
+            raise NotImplementedError(f"Approach '{self.approach}' is unknown.")
 
     def apply_orthonormalization(self, update_offline_stage=True):
         q, r = qr(self.snapshot_matrix, mode='economic')
