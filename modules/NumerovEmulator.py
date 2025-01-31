@@ -1335,7 +1335,7 @@ class MatrixNumerovROM:
                     error_est_delta = self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
                     print("shape norm", np.linalg.norm(ab_emulated, axis=0).shape)
                     error_est_delta *= (self.coercivity_constant*norm_residuals)
-                    self.greedy_logging[-1].append((ab_emulated, ab_simulated, error_est_delta))
+                    self.greedy_logging[-1].extend([ab_emulated, ab_simulated, error_est_delta])
 
             if logging and (arg_max_err_est == arg_max_err_real):
                 assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
