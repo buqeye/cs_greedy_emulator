@@ -1084,11 +1084,15 @@ class MatrixNumerovROM:
             self.matrix_asympt_limit = np.linalg.lstsq(self.design_matrix_FG, 
                                                        X_red[self.mask_fit_asympt_limit[2:],:], rcond=None)[0] 
         
-    def get_scattering_matrix(self, sols_rows, which="K"):
-        ab_arr = np.copy(sols_rows)
+    def get_scattering_matrix(self, ab_arr, full_sols=None, which="K"):
+        ab_arr = np.copy(ab_arr)
         if self.inhomogeneous:
             ab_arr[0, :] += self.scattExp.p
-        if which == "S":
+        if which == "ab":
+            return ab_arr
+        elif which == "delta":
+            return np.arctan2(ab_arr[1, :], ab_arr[0, :])  # arctan2(b, a)
+        elif which == "S":
             num = ab_arr[0, :] + 1j*ab_arr[1, :]
             denom = ab_arr[0, :] - 1j*ab_arr[1, :]
             return num / denom
@@ -1106,10 +1110,7 @@ class MatrixNumerovROM:
         else:
             ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
                                      full_sols[self.mask_fit_asympt_limit,:], rcond=None)[0] 
-            if self.inhomogeneous:
-                ab_arr[0, :] += self.scattExp.p
-            return (full_sols + self.F_grid[:, np.newaxis]) / ab_arr[0, :]
-            # return self.get_scattering_matrix(ab_arr, which=which)
+            return self.get_scattering_matrix(ab_arr, full_sols=full_sols, which=which)
 
     def emulate(self, lecList, which="all", 
                 estimate_norm_residual=False, mode="grom",
@@ -1142,7 +1143,7 @@ class MatrixNumerovROM:
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
         coeffs_all = np.array(coeffs_all).T
         
-        if which in ("K", "S"):
+        if which in ("ab", "delta", "K", "S"):
             ab_arr = self.matrix_asympt_limit @ coeffs_all
             return self.get_scattering_matrix(ab_arr, which=which)
             # alternatively, one could use the following options:
@@ -1324,6 +1325,17 @@ class MatrixNumerovROM:
                 print(f"\t\tcoercivity constant: {self.coercivity_constant:.3e}")
                 if logging:
                     self.greedy_logging[-1].append(self.coercivity_constant)
+                    ab_emulated = self.emulate(emulate_snapshots, which="ab", 
+                                                  mode=mode, estimate_norm_residual=False, 
+                                                  calibrate_norm_residual=False, 
+                                                  calc_error_bounds=False, 
+                                                  cond_number_threshold=None, 
+                                                  self_test=logging)
+                    ab_simulated = self.simulate(emulate_snapshots, which="ab")
+                    error_est_delta = self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
+                    print("shape norm", np.linalg.norm(ab_emulated, axis=0).shape)
+                    error_est_delta *= (self.coercivity_constant*norm_residuals)
+                    self.greedy_logging[-1].append((ab_emulated, ab_simulated, error_est_delta))
 
             if logging and (arg_max_err_est == arg_max_err_real):
                 assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
