@@ -950,6 +950,11 @@ class MatrixNumerovROM:
     def wavefct(self, cvec):
         return self.snapshot_matrix @ cvec
     
+    
+    def Lmatrix(self, cvec):
+        return self.snapshot_Lvec @ cvec
+                
+                
     def Lmatrix(self, cvec):
         return self.snapshot_Lvec @ cvec
                 
@@ -1183,19 +1188,6 @@ class MatrixNumerovROM:
             return emulated_sols, norm_residuals, error_bounds    
         else:
             return emulated_sols
-
-    @staticmethod
-    def get_S_matrix(a_b_array):
-        ret = []
-        for a, b in a_b_array.T:
-            num = a + 1j*b
-            denom = a - 1j*b
-            ret.append(num / denom)
-        return np.array(ret)
-    
-    @staticmethod
-    def get_phase_shift(a_b_array):
-        return np.degrees(np.arctan2(a_b_array[1,:], a_b_array[0,:]))
 
     def reconstruct_norm_residual(self, lecs, coeffs):
         lecs_H = lecs.conjugate().T
