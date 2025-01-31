@@ -1384,5 +1384,5 @@ class MatrixNumerovROM:
         # for performance optimization, we add one column to `matrix_asympt_limit` manually,
         # instead of letting `update_offline_stage` recompute it completely.
         self.update_offline_stage(update_matrix_asympt_limit=False)
-        to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, fom_sol, rcond=None)[0] 
+        to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, fom_sol[self.mask_fit_asympt_limit], rcond=None)[0] 
         self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
