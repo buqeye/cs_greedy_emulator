@@ -131,12 +131,17 @@ class ScatteringSolution:
         self.potential = scattExp.potential
         self.grid = grid
         self.matching = matching
+        self.matching_method = matching_method
         self.anc = anc
         
         assert f_lbl in ("u", "chi"), f"unknown label '{f_lbl}'"
-        if fprime is None and matching_method != "lsqfit":  # lsqfit doesn't need u'
+        
+        if fprime is None:
             self.fprime = np.gradient(f, self.grid.points, edge_order=2)
-        self.u, self.uprime = self.convert_u_chi(f_lbl, f, fprime, to="u")
+            # lsqfit doesn't need derivatives
+        else:
+            self.fprime = fprime
+        self.u, self.uprime = self.convert_u_chi(f_lbl, f, self.fprime, to="u")
         
         self.vr = vr  # V(r) sampled on 'grid'
         self.Lmatrix = None
