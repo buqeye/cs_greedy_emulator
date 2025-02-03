@@ -1337,7 +1337,6 @@ class MatrixNumerovROM:
                                                self_test=logging)
                     ab_simulated = self.simulate(emulate_snapshots, which="ab")
                     error_est_delta = self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
-                    print("shape norm", error_est_delta.shape)
                     error_est_delta *= self.coercivity_constant*norm_residuals
                     self.greedy_logging[-1].extend([ab_emulated, ab_simulated, error_est_delta])
 
@@ -1362,7 +1361,6 @@ class MatrixNumerovROM:
             # full truncated SVD again only for completeness
         elif self.approach in ("orth", "greedy"):
             try:
-                xxs = np.copy(self.snapshot_matrix)
                 self.snapshot_matrix, self.snapshot_matrix_r = qr_insert(Q=self.snapshot_matrix, 
                                                                          R=self.snapshot_matrix_r, 
                                                                          u=fom_sol, 
@@ -1376,11 +1374,10 @@ class MatrixNumerovROM:
                 to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, self.snapshot_matrix[self.mask_fit_asympt_limit, -1], rcond=None)[0] 
                 self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
 
+                # useful for debugging: check that updated a,b matrix matches recomputed a,b matrix
                 ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
                                         self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
-
-                print(self.matrix_asympt_limit - ab_arr)
-                print(np.max(np.abs(xxs - self.snapshot_matrix[:,:-1])))
+                assert np.allclose(self.matrix_asympt_limit, ab_arr), "something's wrong with the updated (a,b) matrix (containing the asympt. limit parameters)"
 
                 # `qr_insert` will raise a `LinAlgError` if one of the columns of u lies in the span of Q,
                 # which is measured using `rcond`; if that is the case, we perform a QR decomposition
