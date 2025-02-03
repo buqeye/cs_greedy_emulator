@@ -1330,15 +1330,15 @@ class MatrixNumerovROM:
                 if logging:
                     self.greedy_logging[-1].append(self.coercivity_constant)
                     ab_emulated = self.emulate(emulate_snapshots, which="ab", 
-                                                  mode=mode, estimate_norm_residual=False, 
-                                                  calibrate_norm_residual=False, 
-                                                  calc_error_bounds=False, 
-                                                  cond_number_threshold=None, 
-                                                  self_test=logging)
+                                               mode=mode, estimate_norm_residual=False, 
+                                               calibrate_norm_residual=False, 
+                                               calc_error_bounds=False, 
+                                               cond_number_threshold=None, 
+                                               self_test=logging)
                     ab_simulated = self.simulate(emulate_snapshots, which="ab")
                     error_est_delta = self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
-                    print("shape norm", np.linalg.norm(ab_emulated, axis=0).shape)
-                    error_est_delta *= (self.coercivity_constant*norm_residuals)
+                    print("shape norm", error_est_delta.shape)
+                    error_est_delta *= self.coercivity_constant*norm_residuals
                     self.greedy_logging[-1].extend([ab_emulated, ab_simulated, error_est_delta])
 
             if logging and (arg_max_err_est == arg_max_err_real):
@@ -1361,10 +1361,12 @@ class MatrixNumerovROM:
             # updating the snapshot matrix after POD, we perform here a
             # full truncated SVD again only for completeness
         elif self.approach in ("orth", "greedy"):
+            xxs = np.copy(self.snapshot_matrix)
             try:
                 self.snapshot_matrix, self.snapshot_matrix_r = qr_insert(Q=self.snapshot_matrix, 
                                                                          R=self.snapshot_matrix_r, 
-                                                                         u=fom_sol, k=-1, 
+                                                                         u=fom_sol, 
+                                                                         k=self.snapshot_matrix.shape[1], 
                                                                          which='col', rcond=None)
                 # `qr_insert` will raise a `LinAlgError` if one of the columns of u lies in the span of Q,
                 # which is measured using `rcond`; if that is the case, we perform a QR decomposition
@@ -1384,3 +1386,10 @@ class MatrixNumerovROM:
         self.update_offline_stage(update_matrix_asympt_limit=False)
         to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, self.snapshot_matrix[self.mask_fit_asympt_limit, -1], rcond=None)[0] 
         self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
+
+        ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
+                                 self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
+        # ab_arr = self.get_scattering_matrix(ab_arr, full_sols=None, which="ab") 
+
+        print(self.matrix_asympt_limit - ab_arr)
+        print(np.max(np.abs(xxs - self.snapshot_matrix[:,:-1])))
