@@ -1099,7 +1099,10 @@ class MatrixNumerovROM:
         elif which == "K":
             return ab_arr[1, :] / ab_arr[0, :]  # b / a 
         elif which == "u": 
-            return (full_sols + self.F_grid[:, np.newaxis]) / ab_arr[0, :]
+            tmp = full_sols
+            if self.inhomogeneous:
+                tmp += self.F_grid[:, np.newaxis]
+            return tmp / ab_arr[0, :]
         else:
             raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
@@ -1143,9 +1146,10 @@ class MatrixNumerovROM:
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
         coeffs_all = np.array(coeffs_all).T
         
-        if which in ("ab", "delta", "K", "S"):
+        if which in ("ab", "delta", "u", "K", "S"):
             ab_arr = self.matrix_asympt_limit @ coeffs_all
-            return self.get_scattering_matrix(ab_arr, which=which)
+            emulated_sols = self.snapshot_matrix @ coeffs_all
+            return self.get_scattering_matrix(ab_arr, full_sols=emulated_sols, which=which)
             # alternatively, one could use the following options:
             # relevant_sols = self.snapshot_matrix[self.mask_fit_asympt_limit,:] @ coeffs_all
             # ab_arr = np.linalg.lstsq(self.design_matrix_FG, relevant_sols, rcond=None)[0]
