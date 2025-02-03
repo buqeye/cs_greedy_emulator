@@ -1091,7 +1091,7 @@ class MatrixNumerovROM:
         if which == "ab":
             return ab_arr
         elif which == "delta":
-            return np.arctan2(ab_arr[1, :], ab_arr[0, :])  # arctan2(b, a)
+            return np.rad2deg(np.arctan2(ab_arr[1, :], ab_arr[0, :]))  # arctan2(b, a) in degrees
         elif which == "S":
             num = ab_arr[0, :] + 1j*ab_arr[1, :]
             denom = ab_arr[0, :] - 1j*ab_arr[1, :]
