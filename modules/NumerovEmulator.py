@@ -1005,7 +1005,7 @@ class MatrixNumerovROM:
         self.snapshot_matrix_r = r
 
         if update_offline_stage:
-            self.update_offline_stage()
+            self.update_offline_stage(update_matrix_asympt_limit=True, verbose=False)
 
     @staticmethod
     def truncated_svd(matrix, rcond=None):
@@ -1032,7 +1032,7 @@ class MatrixNumerovROM:
         print(f"using {curr_rank} out of {prev_rank} POD modes in total: compression rate is {compression_rate*100:.1f} %")
         
         if update_offline_stage:
-            self.update_offline_stage()
+            self.update_offline_stage(update_matrix_asympt_limit=True, verbose=False)
 
     def update_offline_stage(self, update_matrix_asympt_limit=True, verbose=True):
         # Note: when adding snapshots to the emulator basis, one does not need to recompute all tensors again,
@@ -1356,40 +1356,42 @@ class MatrixNumerovROM:
         self.fom_solutions = np.column_stack((self.fom_solutions, fom_sol))
         if self.approach == "pod":
             self.snapshot_matrix = np.copy(self.fom_solutions)
-            self.apply_pod(update_offline_stage=False)
+            self.apply_pod(update_offline_stage=True)
             # one could do here an incremental SVD; since we do not explore
             # updating the snapshot matrix after POD, we perform here a
             # full truncated SVD again only for completeness
         elif self.approach in ("orth", "greedy"):
-            xxs = np.copy(self.snapshot_matrix)
             try:
+                xxs = np.copy(self.snapshot_matrix)
                 self.snapshot_matrix, self.snapshot_matrix_r = qr_insert(Q=self.snapshot_matrix, 
                                                                          R=self.snapshot_matrix_r, 
                                                                          u=fom_sol, 
-                                                                         k=self.snapshot_matrix.shape[1], 
+                                                                         k=self.snapshot_matrix.shape[1],  # -1 here would **not** make the last column (append)
                                                                          which='col', rcond=None)
+
+                # update offline stage given the new snapshot matrix
+                self.update_offline_stage(update_matrix_asympt_limit=False)
+                # for performance optimization, we add one column to `matrix_asympt_limit` manually,
+                # instead of letting `update_offline_stage` recompute it completely.
+                to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, self.snapshot_matrix[self.mask_fit_asympt_limit, -1], rcond=None)[0] 
+                self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
+
+                ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
+                                        self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
+
+                print(self.matrix_asympt_limit - ab_arr)
+                print(np.max(np.abs(xxs - self.snapshot_matrix[:,:-1])))
+
                 # `qr_insert` will raise a `LinAlgError` if one of the columns of u lies in the span of Q,
                 # which is measured using `rcond`; if that is the case, we perform a QR decomposition
                 # on the updated snapshot matrix, which results in an orthonormal basis  with the requested size
             except LinAlgError:
-                print("Warning: need to perform full QR decomposition. Added snapshot is orthogonalzied away.")
+                print("Warning: need to perform full QR decomposition. Added snapshot is 'orthogonalzied away'.")
                 self.snapshot_matrix = np.copy(self.fom_solutions)
-                self.apply_orthonormalization(update_offline_stage=False)
+                self.apply_orthonormalization(update_offline_stage=True)
+                raise NotImplementedError("This part may be correct, but should be further checked. Consider implementing re-orthogonalization.")
         elif self.approach is None: 
             self.snapshot_matrix = np.copy(self.fom_solutions)
+            self.update_offline_stage(update_matrix_asympt_limit=True)  # here could be an incremental update
         else:
             raise NotADirectoryError(f"Approach '{self.approach}' is unknown.")
-
-        # update offline stage given the new snapshot matrix
-        # for performance optimization, we add one column to `matrix_asympt_limit` manually,
-        # instead of letting `update_offline_stage` recompute it completely.
-        self.update_offline_stage(update_matrix_asympt_limit=False)
-        to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, self.snapshot_matrix[self.mask_fit_asympt_limit, -1], rcond=None)[0] 
-        self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
-
-        ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
-                                 self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
-        # ab_arr = self.get_scattering_matrix(ab_arr, full_sols=None, which="ab") 
-
-        print(self.matrix_asympt_limit - ab_arr)
-        print(np.max(np.abs(xxs - self.snapshot_matrix[:,:-1])))
