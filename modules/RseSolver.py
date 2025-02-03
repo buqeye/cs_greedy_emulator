@@ -159,12 +159,12 @@ class ScatteringSolution:
         else:
             if f_lbl == "u" and to == "chi":    
                 sign = -1.
-                prefac_f = 1./self.anc
+                prefac_f = 1./self.anc  # recall that `self.anc` is 1/p in our case
                 prefac_glob = 1.
             elif f_lbl == "chi" and to == "u":  
                 sign = 1.
                 prefac_f = 1.
-                prefac_glob = 1./self.anc
+                prefac_glob = self.anc  # this factor is arbitrary because this transform is only used pre matching
             else:
                 raise NotImplementedError
             p = self.scattExp.p
