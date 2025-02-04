@@ -70,7 +70,7 @@ class Potential:
     def sampleLecs(self):
         return Potential.getSampleLecs(self.name)
 
-    def getLecsSample(self, lecs_variation, n=100, seed=123, 
+    def getLecsSample(self, lecs_variation, n=100, seed=None, 
                       mode="random", as_dict=True):
         lecs_lbl_to_be_varied = list(lecs_variation.keys())
         d = len(lecs_lbl_to_be_varied)
