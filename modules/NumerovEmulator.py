@@ -1333,10 +1333,16 @@ class MatrixNumerovROM:
                                                calc_error_bounds=False, 
                                                cond_number_threshold=None, 
                                                self_test=logging)
-                    ab_simulated = self.simulate(emulate_snapshots, which="ab")
-                    error_est_delta = self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
-                    error_est_delta *= self.coercivity_constant*norm_residuals
-                    self.greedy_logging[-1].extend([ab_emulated, ab_simulated, error_est_delta])
+                    delta_error_est = np.rad2deg(1) * self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
+                    delta_error_est *= self.coercivity_constant*norm_residuals
+                    delta_simulated = self.simulate(emulate_snapshots, which="delta")
+                    delta_emulated = self.emulate(emulate_snapshots, which="delta", 
+                                               mode=mode, estimate_norm_residual=False, 
+                                               calibrate_norm_residual=False, 
+                                               calc_error_bounds=False, 
+                                               cond_number_threshold=None, 
+                                               self_test=logging)
+                    self.greedy_logging[-1].extend([delta_emulated, delta_simulated, delta_error_est])
 
             if logging and (arg_max_err_est == arg_max_err_real):
                 assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
