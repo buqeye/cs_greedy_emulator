@@ -20,7 +20,7 @@ class AllAtOnceNumerovROM:
                  init_snapshot_lecs=None,
                  greedy_max_iter=5, 
                  mode="linear",
-                 emulator_training_mode="grom",
+                 greedy_training_mode="grom",
                  inhomogeneous=True,
                  seed=10203) -> None:
         # internal book keeping
@@ -34,8 +34,8 @@ class AllAtOnceNumerovROM:
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
-        assert emulator_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
-        self.emulator_training_mode = emulator_training_mode
+        assert greedy_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
+        self.greedy_training_mode = greedy_training_mode
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
@@ -309,7 +309,7 @@ class AllAtOnceNumerovROM:
                          lowest_mean_norm_residuals=1e-11,
                          logging=True, verbose=True):
         if mode is None:
-            mode = self.emulator_training_mode
+            mode = self.greedy_training_mode
         if error_calibration_mode:
             calibrate_error_estimation = True
             max_iter = 1
@@ -454,7 +454,7 @@ class MatrixNumerovROM_ab:
                  init_snapshot_lecs=None,
                  greedy_max_iter=5, 
                  mode="linear",
-                 emulator_training_mode="grom",
+                 greedy_training_mode="grom",
                  inhomogeneous=True,
                  seed=10203) -> None:
         # internal book keeping
@@ -468,8 +468,8 @@ class MatrixNumerovROM_ab:
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
-        assert emulator_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
-        self.emulator_training_mode = emulator_training_mode
+        assert greedy_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
+        self.greedy_training_mode = greedy_training_mode
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
@@ -747,7 +747,7 @@ class MatrixNumerovROM_ab:
                          lowest_mean_norm_residuals=1e-11,
                          logging=True, verbose=True):
         if mode is None:
-            mode = self.emulator_training_mode
+            mode = self.greedy_training_mode
         if error_calibration_mode:
             calibrate_error_estimation = True
             max_iter = 1
@@ -892,7 +892,7 @@ class MatrixNumerovROM:
                  init_snapshot_lecs=None,
                  greedy_max_iter=5, 
                  mode="linear",
-                 emulator_training_mode="grom",
+                 greedy_training_mode="grom",
                  num_pts_fit_asympt_limit=25,
                  inhomogeneous=True,
                  seed=10203) -> None:
@@ -907,8 +907,8 @@ class MatrixNumerovROM:
         self.pod_rcond = pod_rcond
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
-        assert emulator_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
-        self.emulator_training_mode = emulator_training_mode
+        assert greedy_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
+        self.greedy_training_mode = greedy_training_mode
         self.num_pts_fit_asympt_limit = num_pts_fit_asympt_limit
         self.seed = seed
         self.greedy_logging = []
@@ -1116,12 +1116,15 @@ class MatrixNumerovROM:
             return self.get_scattering_matrix(ab_arr, full_sols=full_sols, which=which)
 
     def emulate(self, lecList, which="all", 
-                estimate_norm_residual=False, mode="grom",
+                estimate_norm_residual=False, mode=None,
                 calc_error_bounds=False, calibrate_norm_residual=False,
                 cond_number_threshold=None, self_test=True, 
                 lspg_rcond=None, lspg_solver="svd"):
-        coeffs_all = []
+        if mode is None:
+            mode = self.greedy_training_mode
         assert mode in ("grom", "lspg"), f"requested mode '{mode}' unknown"
+        print(f"emulating '{which}' using '{mode}'")
+        coeffs_all = []
         A_tilde_tensor = self.A_tilde_grom if mode == "grom" else self.A_tilde_lspg
         s_tilde_tensor = self.s_tilde_grom if mode == "grom" else self.s_tilde_lspg
         for lecs in lecList:
@@ -1238,7 +1241,7 @@ class MatrixNumerovROM:
                          lowest_mean_norm_residuals=1e-11,
                          logging=True, verbose=True):
         if mode is None:
-            mode = self.emulator_training_mode
+            mode = self.greedy_training_mode
         if error_calibration_mode:
             calibrate_error_estimation = True
             max_iter = 1
