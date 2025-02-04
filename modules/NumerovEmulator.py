@@ -921,9 +921,10 @@ class MatrixNumerovROM:
         self.F_grid = free_solutions_F_G(l=self.scattExp.l, r=grid.points, 
                                          p=self.scattExp.p, derivative=False)[:, 0]  # could be improved together with the lines above
         
-        S = np.zeros((grid.getNumPointsTotal, self.num_pts_fit_asympt_limit))
-        S[self.mask_fit_asympt_limit, :] = np.eye(self.num_pts_fit_asympt_limit)
-        self.norm_Minv_Sdagger = np.linalg.norm(np.linalg.pinv(self.design_matrix_FG) @ S.T, ord=2)
+        self.S = np.zeros((grid.getNumPointsTotal, self.num_pts_fit_asympt_limit))
+        self.S[self.mask_fit_asympt_limit, :] = np.eye(self.num_pts_fit_asympt_limit)
+        self.fit_matrix = np.linalg.pinv(self.design_matrix_FG) @ self.S.T
+        self.norm_Minv_Sdagger = np.linalg.norm(self.fit_matrix, ord=2)  # 2-norm (i.e., largest singular vector)
         assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.Minv_Sdagger}"
 
         # FOM solver (all-at-once Numerov)
