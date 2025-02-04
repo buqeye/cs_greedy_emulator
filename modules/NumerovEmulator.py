@@ -1373,9 +1373,9 @@ class MatrixNumerovROM:
                 self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
 
                 # useful for debugging: check that updated a,b matrix matches recomputed a,b matrix
-                ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
-                                        self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
-                assert np.allclose(self.matrix_asympt_limit, ab_arr), "something's wrong with the updated (a,b) matrix (containing the asympt. limit parameters)"
+                # ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
+                #                         self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
+                # assert np.allclose(self.matrix_asympt_limit, ab_arr), "something's wrong with the updated (a,b) matrix (containing the asympt. limit parameters)"
 
                 # `qr_insert` will raise a `LinAlgError` if one of the columns of u lies in the span of Q,
                 # which is measured using `rcond`; if that is the case, we perform a QR decomposition
