@@ -1152,7 +1152,7 @@ class MatrixNumerovROM:
         
         if which in ("ab", "delta", "u", "K", "S"):
             ab_arr = self.matrix_asympt_limit @ coeffs_all
-            emulated_sols = self.snapshot_matrix @ coeffs_all
+            emulated_sols = self.snapshot_matrix @ coeffs_all if which == "u" else None
             return self.get_scattering_matrix(ab_arr, full_sols=emulated_sols, which=which)
             # alternatively, one could use the following options:
             # relevant_sols = self.snapshot_matrix[self.mask_fit_asympt_limit,:] @ coeffs_all
@@ -1164,12 +1164,6 @@ class MatrixNumerovROM:
         # enforce initial conditions
         # emulated_sols[0, :] = self.numerov_solver.y0
         # emulated_sols[1, :] = self.numerov_solver.y1
-
-        # TODO: transform wave functions (matching)?
-
-        emulated_a_b = self.matrix_asympt_limit @ coeffs_all
-        if self.inhomogeneous:
-            emulated_a_b[0, :] += 1.
 
         if estimate_norm_residual:
             num_norm_residuals = len(lecList)
