@@ -975,9 +975,14 @@ class MatrixNumerovROM:
 
         # initial snapshot selection (random)
         rng = np.random.default_rng(seed=self.seed)
+        # if self.mode == "linear":
+        #     self.included_snapshots_idxs = set(rng.choice(range(1, self.num_snapshots_max-1), 
+        #                                                   size=self.num_snapshots_init-2, replace=False))
+        #     self.included_snapshots_idxs = self.included_snapshots_idxs.union((0, self.num_snapshots_max-1))
+        # else:
         self.included_snapshots_idxs = set(rng.choice(range(self.num_snapshots_max), 
-                                                 size=self.num_snapshots_init, replace=False))
-        
+                                                        size=self.num_snapshots_init, replace=False))
+
         # building snapshot matrix for chi, not Psi
         init_lecs = np.take(a=self.lec_all_samples, indices=list(self.included_snapshots_idxs), axis=0)
         self.snapshot_matrix = self.simulate(init_lecs)
