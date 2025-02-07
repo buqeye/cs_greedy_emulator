@@ -823,7 +823,7 @@ class MatrixNumerovROM_ab:
                         
             # check whether accuracy goal is achieved
             scaled_max_err_est = self.coercivity_constant * max_err_est if calibrate_error_estimation else max_err_est
-            if scaled_max_err_est < atol:
+            if scaled_max_err_est < atol and niter > 0:  # need to have completed at least one iteration for calibration at this point
                 print(f"accuracy goal 'atol = {atol}' achieved. Terminating greedy iteration.")
                 break
 
@@ -886,9 +886,9 @@ class MatrixNumerovROM:
     wave function in the solution vector, not (a,b) or some scattering matrix.
     This emulator is real-valued for real-valued potentials.
     """
-    def __init__(self, scattExp, grid, free_lecs, 
+    def __init__(self, scattExp, grid, free_lecs=None, 
                  num_snapshots_init=3, num_snapshots_max=15, 
-                 approach="pod", pod_rcond=1e-12, 
+                 approach="pod", pod_rcond=1e-12, pod_num_modes=None,
                  init_snapshot_lecs=None,
                  greedy_max_iter=5, 
                  mode="linear",
@@ -900,11 +900,12 @@ class MatrixNumerovROM:
         self.scattExp = scattExp
         self.grid = grid
         self.free_lecs = free_lecs
-        assert num_snapshots_init <= num_snapshots_max, "can't have more initial snapshots than maximally allowed"
+        assert bool(free_lecs) != bool(init_snapshot_lecs), "either `free_lecs` or `init_snapshot_lecs` has to be specified" 
         self.num_snapshots_init = num_snapshots_init
-        self.num_snapshots_max =  num_snapshots_init if approach == "pod" else num_snapshots_max
+        self.num_snapshots_max = num_snapshots_max
         self.approach = approach
         self.pod_rcond = pod_rcond
+        self.pod_num_modes = pod_num_modes
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
         assert greedy_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
@@ -969,21 +970,18 @@ class MatrixNumerovROM:
                                                                 seed=self.seed)
             # search-type runs could also be done using random samples via sorted(..., key=lambda dictx: dictx["V0"])
         else:
-            self.lec_all_samples = snapshot_lecs
-            self.num_snapshots_init = len(self.lec_all_samples)
-            assert self.num_snapshots_init <= self.num_snapshots_max, "can't have more initial snapshots than maximally allowed"
+            self.lec_all_samples = self.potential.lec_array_from_dict(snapshot_lecs)
+            self.num_snapshots_max = len(self.lec_all_samples)
 
         # initial snapshot selection (random)
         rng = np.random.default_rng(seed=self.seed)
-        # if self.mode == "linear":
-        #     self.included_snapshots_idxs = set(rng.choice(range(1, self.num_snapshots_max-1), 
-        #                                                   size=self.num_snapshots_init-2, replace=False))
-        #     self.included_snapshots_idxs = self.included_snapshots_idxs.union((0, self.num_snapshots_max-1))
-        # else:
+        if self.num_snapshots_init is None:
+            self.num_snapshots_init = self.num_snapshots_max
+        assert self.num_snapshots_init <= self.num_snapshots_max, "can't request more initial snapshots than maximally allowed"
         self.included_snapshots_idxs = set(rng.choice(range(self.num_snapshots_max), 
-                                                        size=self.num_snapshots_init, replace=False))
+                                                      size=self.num_snapshots_init, replace=False))
 
-        # building snapshot matrix for chi, not Psi
+        # building snapshot matrix
         init_lecs = np.take(a=self.lec_all_samples, indices=list(self.included_snapshots_idxs), axis=0)
         self.snapshot_matrix = self.simulate(init_lecs)
 
@@ -1000,21 +998,24 @@ class MatrixNumerovROM:
         elif self.approach == "orth":
             self.apply_orthonormalization(update_offline_stage=True)
         elif self.approach is None: 
-            self.update_offline_stage()
-            print(f"Snapshot matrix not orthonormalized. Consider using `approach='orth'`")
+            self.update_offline_stage(update_matrix_asympt_limit=True)
+            print(f"Warning: snapshot matrix not orthonormalized. Consider using `approach='orth'`")
         else:
             raise NotImplementedError(f"Approach '{self.approach}' is unknown.")
 
     def apply_orthonormalization(self, update_offline_stage=True):
+        prev_shape = self.snapshot_matrix.shape
         q, r = qr(self.snapshot_matrix, mode='economic')
         self.snapshot_matrix = q
         self.snapshot_matrix_r = r
+        curr_shape = self.snapshot_matrix.shape
+        assert curr_shape == prev_shape, "number of basis elements decreased due to orthonormalization "
 
         if update_offline_stage:
             self.update_offline_stage(update_matrix_asympt_limit=True, verbose=False)
 
     @staticmethod
-    def truncated_svd(matrix, rcond=None):
+    def truncated_svd(matrix, rcond=None, num_modes=None):
         # modified from scipy's `orth()` function:
         # https://github.com/scipy/scipy/blob/v1.14.1/scipy/linalg/_decomp_svd.py#L302-L347
         from scipy.linalg import svd
@@ -1023,14 +1024,15 @@ class MatrixNumerovROM:
         if rcond is None:
             rcond = np.finfo(s.dtype).eps * max(M, N)
         tol = np.amax(s, initial=0.) * rcond
-        num = np.sum(s > tol, dtype=int)  # = r
+        num = np.sum(s > tol, dtype=int) if num_modes is None else num_modes # = r
         Q = u[:, :num]
         return Q, s[:num], vh.conjugate().transpose()[:, :num]
 
     def apply_pod(self, update_offline_stage=True):
         prev_rank = self.snapshot_matrix.shape[1]
         # calling `sp.linalg.orth()`` would be enough here, but we might want to study different SVD truncations in the future
-        Ur, S, Vr = self.truncated_svd(self.snapshot_matrix, rcond=self.pod_rcond)
+        Ur, S, Vr = self.truncated_svd(self.snapshot_matrix, rcond=self.pod_rcond, 
+                                       num_modes=self.pod_num_modes)
         self.snapshot_matrix = Ur
 
         curr_rank = self.snapshot_matrix.shape[1]
@@ -1236,26 +1238,29 @@ class MatrixNumerovROM:
         
         return total2
 
-    def greedy_algorithm(self, error_calibration_mode=False, mode=None,
+    def greedy_algorithm(self, req_num_iter=None, mode=None,
                          calibrate_error_estimation=True, atol=1e-12,
                          lowest_mean_norm_residuals=1e-11,
                          logging=True, verbose=True):
         if mode is None:
             mode = self.greedy_training_mode
-        if error_calibration_mode:
-            calibrate_error_estimation = True
-            max_iter = 1
-        else: 
-            max_iter = min(self.greedy_max_iter, max(0, self.num_snapshots_max-len(self.included_snapshots_idxs)))
-        if max_iter > 0:
+
+        max_num_iter = self.num_snapshots_max-len(self.included_snapshots_idxs)
+        if req_num_iter is None:
+            req_num_iter = min(self.greedy_max_iter, max_num_iter)
+        elif calibrate_error_estimation:
+            req_num_iter += 1
+
+        if max_num_iter > 0 and req_num_iter >0 and req_num_iter <= max_num_iter:
             print("snapshot idx already included in basis:", self.included_snapshots_idxs)
             print(f"now greedily improving the snapshot basis:")
         else:
             print("Nothing to be done. Maxed out available snapshots and/or number of iterations")
+            return
 
         current_mean_norm_residuals = np.inf
-        for niter in range(max_iter):
-            print(f"\titeration #{niter+1} of max {max_iter}:")
+        for niter in range(req_num_iter):
+            print(f"\titeration #{niter+1} of max {req_num_iter}:")
             
             # determine candidate snapshots that the greedy algorithm can add
             candidate_snapshot_idxs = list(self.all_snapshot_idxs - self.included_snapshots_idxs)
@@ -1291,8 +1296,8 @@ class MatrixNumerovROM:
             if mean_norm_residuals > current_mean_norm_residuals:
                 print(f"\t\tWarning: estimated mean error has increased. Terminating greedy iteration.")
                 break
-            if mean_norm_residuals < lowest_mean_norm_residuals:
-                print(f"\t\tWarning: estimated mean error reached set bound < {lowest_mean_norm_residuals:.2e}. Terminating greedy iteration.")
+            if mean_norm_residuals < lowest_mean_norm_residuals:  # safeguard against numerical instabilities
+                print(f"\t\testimated mean error reached requested bound < {lowest_mean_norm_residuals:.2e}. Terminating greedy iteration.")
                 break
             current_mean_norm_residuals = mean_norm_residuals
 
@@ -1317,7 +1322,7 @@ class MatrixNumerovROM:
                         
             # check whether accuracy goal is achieved
             scaled_max_err_est = self.coercivity_constant * max_err_est if calibrate_error_estimation else max_err_est
-            if scaled_max_err_est < atol:
+            if scaled_max_err_est < atol and niter > 0:  # need to have completed at least one iteration for calibration at this point
                 print(f"accuracy goal 'atol = {atol}' achieved. Terminating greedy iteration.")
                 break
 
@@ -1337,7 +1342,7 @@ class MatrixNumerovROM:
                                                calibrate_norm_residual=False, 
                                                calc_error_bounds=False, 
                                                cond_number_threshold=None, 
-                                               self_test=logging)
+                                               self_test=False)
                     delta_error_est = np.rad2deg(1) * self.norm_Minv_Sdagger / np.linalg.norm(ab_emulated, axis=0) 
                     delta_error_est *= self.coercivity_constant*norm_residuals
                     delta_simulated = self.simulate(emulate_snapshots, which="delta")
@@ -1346,7 +1351,7 @@ class MatrixNumerovROM:
                                                calibrate_norm_residual=False, 
                                                calc_error_bounds=False, 
                                                cond_number_threshold=None, 
-                                               self_test=logging)
+                                               self_test=False)
                     self.greedy_logging[-1].extend([delta_emulated, delta_simulated, delta_error_est])
 
             if logging and (arg_max_err_est == arg_max_err_real):
@@ -1355,7 +1360,7 @@ class MatrixNumerovROM:
                 assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
                 
             # update snapshot matrix by adding new FOM solution and interal records
-            if not error_calibration_mode and niter < max_iter-1:
+            if niter < req_num_iter-1:
                 print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.included_snapshots_idxs}")
                 self.add_fom_solution_to_basis(to_be_added_fom_sol)
                 self.included_snapshots_idxs.add(snapshot_idx_max_err_est)
