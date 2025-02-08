@@ -1294,11 +1294,9 @@ class MatrixNumerovROM:
             # check that the estimated mean error decreases
             mean_norm_residuals = np.mean(norm_residuals)
             if mean_norm_residuals > current_mean_norm_residuals:
-                print(f"\t\tWarning: estimated mean error has increased. Terminating greedy iteration.")
-                break
+                print(f"\t\tWarning: estimated mean error has increased ({mean_norm_residuals:.5e} vs {current_mean_norm_residuals:.5e}).")
             if mean_norm_residuals < lowest_mean_norm_residuals:  # safeguard against numerical instabilities
-                print(f"\t\testimated mean error reached requested bound < {lowest_mean_norm_residuals:.2e}. Terminating greedy iteration.")
-                break
+                print(f"\t\tWarning: estimated mean error reached requested bound < {lowest_mean_norm_residuals:.2e}.")
             current_mean_norm_residuals = mean_norm_residuals
 
             # select the candidate snapshot with maximum (estimated) error
@@ -1307,6 +1305,7 @@ class MatrixNumerovROM:
             arg_max_err_est = np.argmax(est_err_candidate_snapshots)
             max_err_est = est_err_candidate_snapshots[arg_max_err_est]
             snapshot_idx_max_err_est = candidate_snapshot_idxs[arg_max_err_est]
+            snapshot_max_err_est = candidate_snapshots[arg_max_err_est]
 
             if logging:
                 # check whether the error estimator found indeed the snapshot with maximum (estimated) error
@@ -1327,11 +1326,15 @@ class MatrixNumerovROM:
                 break
 
             # perform FOM calculation at the location of max estimated error
-            to_be_added_fom_sol = self.simulate([candidate_snapshots[arg_max_err_est]])
+            to_be_added_fom_sol = self.simulate([snapshot_max_err_est])
+            assert np.allclose(snapshot_max_err_est, 
+                               self.lec_all_samples[snapshot_idx_max_err_est]), "performed FOM calculation at wrong location?"
 
             # calibrate error estimator
             if calibrate_error_estimation:
-                exact_error = np.linalg.norm(np.squeeze(to_be_added_fom_sol) - emulated_sols[:, snapshot_idx_max_err_est])
+                loc = emulate_snapshot_idxs.index(snapshot_idx_max_err_est) if self.mode == "linear" else arg_max_err_est
+                assert emulate_snapshot_idxs[loc] == snapshot_idx_max_err_est, "wrong ID"
+                exact_error = np.linalg.norm(np.squeeze(to_be_added_fom_sol) - emulated_sols[:, loc])
                 self.coercivity_constant = exact_error / max_err_est
                 assert self.coercivity_constant > 0., "coercivity constant is not positive"
                 print(f"\t\tcoercivity constant: {self.coercivity_constant:.3e}")
@@ -1355,7 +1358,7 @@ class MatrixNumerovROM:
                     self.greedy_logging[-1].extend([delta_emulated, delta_simulated, delta_error_est])
 
             if logging and (arg_max_err_est == arg_max_err_real):
-                assert np.allclose(fom_sols[:, snapshot_idx_max_err_real], 
+                assert np.allclose(fom_sols[:, loc], 
                                    np.squeeze(to_be_added_fom_sol), atol=1e-14, rtol=0.), "adding the wrong FOM solution to basis?"
                 assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
                 
