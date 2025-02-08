@@ -895,6 +895,7 @@ class MatrixNumerovROM:
                  greedy_training_mode="grom",
                  num_pts_fit_asympt_limit=25,
                  inhomogeneous=True,
+                 verbose=True,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -911,6 +912,7 @@ class MatrixNumerovROM:
         assert greedy_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
         self.greedy_training_mode = greedy_training_mode
         self.num_pts_fit_asympt_limit = num_pts_fit_asympt_limit
+        self.verbose = verbose
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
@@ -999,7 +1001,8 @@ class MatrixNumerovROM:
             self.apply_orthonormalization(update_offline_stage=True)
         elif self.approach is None: 
             self.update_offline_stage(update_matrix_asympt_limit=True)
-            print(f"Warning: snapshot matrix not orthonormalized. Consider using `approach='orth'`")
+            if self.verbose: 
+                print(f"Warning: snapshot matrix not orthonormalized. Consider using `approach='orth'`")
         else:
             raise NotImplementedError(f"Approach '{self.approach}' is unknown.")
 
@@ -1012,7 +1015,7 @@ class MatrixNumerovROM:
         assert curr_shape == prev_shape, "number of basis elements decreased due to orthonormalization "
 
         if update_offline_stage:
-            self.update_offline_stage(update_matrix_asympt_limit=True, verbose=False)
+            self.update_offline_stage(update_matrix_asympt_limit=True)
 
     @staticmethod
     def truncated_svd(matrix, rcond=None, num_modes=None):
@@ -1037,12 +1040,13 @@ class MatrixNumerovROM:
 
         curr_rank = self.snapshot_matrix.shape[1]
         compression_rate = 1. - curr_rank / prev_rank
-        print(f"using {curr_rank} out of {prev_rank} POD modes in total: compression rate is {compression_rate*100:.1f} %")
+        if self.verbose:
+            print(f"using {curr_rank} out of {prev_rank} POD modes in total: compression rate is {compression_rate*100:.1f} %")
         
         if update_offline_stage:
-            self.update_offline_stage(update_matrix_asympt_limit=True, verbose=False)
+            self.update_offline_stage(update_matrix_asympt_limit=True)
 
-    def update_offline_stage(self, update_matrix_asympt_limit=True, verbose=True):
+    def update_offline_stage(self, update_matrix_asympt_limit=True):
         # Note: when adding snapshots to the emulator basis, one does not need to recompute all tensors again,
         # rather one can update them for computational efficiency. Since this update only occurs in the offline 
         # stage of the emulator, we keep it in this proof-of-principle work simple and compute the tensors from scratch
@@ -1073,7 +1077,7 @@ class MatrixNumerovROM:
         shape_Y_tensor = self.Y_tensor.shape
         curr_rank = min(shape_Y_tensor)
         compression_rate = 1. - curr_rank / prev_rank
-        if verbose:
+        if self.verbose:
             print(f"POD[ Y ]: compression rate is {compression_rate*100:.1f} %; dim: {shape_Y_tensor}")
         assert shape_Y_tensor[1] < shape_Y_tensor[0] //4, "semi-reduced space for Y is large!"
 
@@ -1131,7 +1135,8 @@ class MatrixNumerovROM:
         if mode is None:
             mode = self.greedy_training_mode
         assert mode in ("grom", "lspg"), f"requested mode '{mode}' unknown"
-        print(f"emulating '{which}' using '{mode}'")
+        if self.verbose:
+            print(f"emulating '{which}' using '{mode}'")
         coeffs_all = []
         A_tilde_tensor = self.A_tilde_grom if mode == "grom" else self.A_tilde_lspg
         s_tilde_tensor = self.s_tilde_grom if mode == "grom" else self.s_tilde_lspg
@@ -1241,7 +1246,7 @@ class MatrixNumerovROM:
     def greedy_algorithm(self, req_num_iter=None, mode=None,
                          calibrate_error_estimation=True, atol=1e-12,
                          lowest_mean_norm_residuals=1e-11,
-                         logging=True, verbose=True):
+                         logging=True):
         if mode is None:
             mode = self.greedy_training_mode
 
@@ -1252,25 +1257,28 @@ class MatrixNumerovROM:
             req_num_iter += 1
 
         if max_num_iter > 0 and req_num_iter >0 and req_num_iter <= max_num_iter:
-            print("snapshot idx already included in basis:", self.included_snapshots_idxs)
-            print(f"now greedily improving the snapshot basis:")
+            if self.verbose:
+                print("snapshot idx already included in basis:", self.included_snapshots_idxs)
+                print(f"now greedily improving the snapshot basis:")
         else:
-            print("Nothing to be done. Maxed out available snapshots and/or number of iterations")
+            if self.verbose:
+                print("Nothing to be done. Maxed out available snapshots and/or number of iterations")
             return
 
         current_mean_norm_residuals = np.inf
         for niter in range(req_num_iter):
-            print(f"\titeration #{niter+1} of max {req_num_iter}:")
+            if self.verbose:
+                print(f"\titeration #{niter+1} of max {req_num_iter}:")
             
             # determine candidate snapshots that the greedy algorithm can add
             candidate_snapshot_idxs = list(self.all_snapshot_idxs - self.included_snapshots_idxs)
-            if verbose: print("\tavailable candidate snapshot idx to be added:", candidate_snapshot_idxs)
+            if self.verbose: print("\tavailable candidate snapshot idx to be added:", candidate_snapshot_idxs)
             candidate_snapshots = np.take(a=self.lec_all_samples, indices=candidate_snapshot_idxs, axis=0)
 
             # determine snapshots at which to compute the errors
             emulate_snapshot_idxs = list(self.all_snapshot_idxs) if self.mode == "linear" else candidate_snapshot_idxs.copy()
             emulate_snapshots = np.take(a=self.lec_all_samples, indices=emulate_snapshot_idxs, axis=0)
-            if verbose: print("\temulate snapshots:", emulate_snapshot_idxs)
+            if self.verbose: print("\temulate snapshots:", emulate_snapshot_idxs)
             # in the case of the "linear" mode, we want to make error plots, so we emulate here all snapshots, 
             # including the ones we've already considered in the greedy iteration.
     
@@ -1294,9 +1302,9 @@ class MatrixNumerovROM:
             # check that the estimated mean error decreases
             mean_norm_residuals = np.mean(norm_residuals)
             if mean_norm_residuals > current_mean_norm_residuals:
-                print(f"\t\tWarning: estimated mean error has increased ({mean_norm_residuals:.5e} vs {current_mean_norm_residuals:.5e}).")
+                if self.verbose: print(f"\t\tWarning: estimated mean error has increased ({mean_norm_residuals:.5e} vs {current_mean_norm_residuals:.5e}).")
             if mean_norm_residuals < lowest_mean_norm_residuals:  # safeguard against numerical instabilities
-                print(f"\t\tWarning: estimated mean error reached requested bound < {lowest_mean_norm_residuals:.2e}.")
+                if self.verbose: print(f"\t\tWarning: estimated mean error reached requested bound < {lowest_mean_norm_residuals:.2e}.")
             current_mean_norm_residuals = mean_norm_residuals
 
             # select the candidate snapshot with maximum (estimated) error
@@ -1315,14 +1323,14 @@ class MatrixNumerovROM:
                 max_err_real = real_err_candidate_snapshots[arg_max_err_real]
                 snapshot_idx_max_err_real = candidate_snapshot_idxs[arg_max_err_real]
 
-                if arg_max_err_est != arg_max_err_real:
+                if arg_max_err_est != arg_max_err_real and self.verbose:
                     print(f"\t\tWarning: estimated max error doesn't match real max error: arg {arg_max_err_est} vs {arg_max_err_real}")
-                print(f"\t\testimated max error: {max_err_est:.3e} | real max error: {max_err_real:.3e}")
+                if self.verbose: print(f"\t\testimated max error: {max_err_est:.3e} | real max error: {max_err_real:.3e}")
                         
             # check whether accuracy goal is achieved
             scaled_max_err_est = self.coercivity_constant * max_err_est if calibrate_error_estimation else max_err_est
             if scaled_max_err_est < atol and niter > 0:  # need to have completed at least one iteration for calibration at this point
-                print(f"accuracy goal 'atol = {atol}' achieved. Terminating greedy iteration.")
+                if self.verbose: print(f"accuracy goal 'atol = {atol}' achieved. Terminating greedy iteration.")
                 break
 
             # perform FOM calculation at the location of max estimated error
@@ -1337,7 +1345,7 @@ class MatrixNumerovROM:
                 exact_error = np.linalg.norm(np.squeeze(to_be_added_fom_sol) - emulated_sols[:, loc])
                 self.coercivity_constant = exact_error / max_err_est
                 assert self.coercivity_constant > 0., "coercivity constant is not positive"
-                print(f"\t\tcoercivity constant: {self.coercivity_constant:.3e}")
+                if self.verbose: print(f"\t\tcoercivity constant: {self.coercivity_constant:.3e}")
                 if logging:
                     self.greedy_logging[-1].append(self.coercivity_constant)
                     ab_emulated = self.emulate(emulate_snapshots, which="ab", 
@@ -1364,7 +1372,7 @@ class MatrixNumerovROM:
                 
             # update snapshot matrix by adding new FOM solution and interal records
             if niter < req_num_iter-1:
-                print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.included_snapshots_idxs}")
+                if self.verbose: print(f"\t\tadding snapshot ID {snapshot_idx_max_err_est} to current basis {self.included_snapshots_idxs}")
                 self.add_fom_solution_to_basis(to_be_added_fom_sol)
                 self.included_snapshots_idxs.add(snapshot_idx_max_err_est)
 
@@ -1400,7 +1408,7 @@ class MatrixNumerovROM:
                 # which is measured using `rcond`; if that is the case, we perform a QR decomposition
                 # on the updated snapshot matrix, which results in an orthonormal basis  with the requested size
             except LinAlgError:
-                print("Warning: need to perform full QR decomposition. Added snapshot is 'orthogonalzied away'.")
+                if self.verbose: print("Warning: need to perform full QR decomposition. Added snapshot is 'orthogonalzied away'.")
                 self.snapshot_matrix = np.copy(self.fom_solutions)
                 self.apply_orthonormalization(update_offline_stage=True)
                 raise NotImplementedError("This part may be correct, but should be further checked. Consider implementing re-orthogonalization.")

@@ -72,7 +72,6 @@ class MatrixNumerov:
         return tmp
 
     def test_prestore(self, atol=1e-14):
-        print("testing")
         def d(i,j):
             return int(i==j)
         l = self.params["scattExp"].l
