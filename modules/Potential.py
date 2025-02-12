@@ -63,7 +63,7 @@ class Potential:
             if isinstance(lecs, dict):
                 ret.append(lecs)
             else:
-                ret.append({lec_lbl: lec for lec_lbl, lec in zip(self.lecAllLabels, lecs)})
+                ret.append({lec_lbl: lec for lec_lbl, lec in zip(self.lecLabels, lecs)})
         return ret
 
     @property
