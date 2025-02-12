@@ -1006,9 +1006,45 @@ class MatrixNumerovROM:
         else:
             raise NotImplementedError(f"Approach '{self.approach}' is unknown.")
 
-    def apply_orthonormalization(self, update_offline_stage=True):
+    @staticmethod        
+    def gram_schmidt(A, num_run=4, mode="modified"):
+        num_run = max((num_run, 1))
+        # partially generated using Google AI
+        if mode=="modified":
+            for i in range(num_run):
+                n, m = A.shape
+                Q = np.zeros((n, m), dtype=float)
+                R = np.zeros((m, m), dtype=float)
+                for i in range(m):
+                    R[i, i] = np.linalg.norm(A[:, i])
+                    Q[:, i] = A[:, i] / R[i, i]
+                    for j in range(i + 1, m):
+                        R[i, j] = np.dot(Q[:, i].T, A[:, j])
+                        A[:, j] = A[:, j] - R[i, j] * Q[:, i]
+        else:  # regular Gram-Schmidt process
+            for i in range(num_run):
+                n = A.shape[1]
+                Q = np.zeros_like(A, dtype=float)
+                for j in range(n):
+                    v = A[:, j]
+                    for i in range(j):
+                        q = Q[:, i]
+                        v = v - np.dot(q, A[:, j]) * q
+                    Q[:, j] = v / np.linalg.norm(v)
+        return Q
+
+    def apply_orthonormalization(self, update_offline_stage=True, method="qr"):
         prev_shape = self.snapshot_matrix.shape
-        q, r = qr(self.snapshot_matrix, mode='economic')
+        if method == "svd":
+            q = orth(self.snapshot_matrix, rcond=None)
+            r = None
+        elif method == "qr":
+            q, r = qr(self.snapshot_matrix, mode='economic')
+        elif method == "gs":
+            q = self.gram_schmidt(self.snapshot_matrix, num_run=4)
+            r = None
+        else:
+            raise NotImplementedError(f"Orthonormalization method '{method}' unknown.")
         self.snapshot_matrix = q
         self.snapshot_matrix_r = r
         curr_shape = self.snapshot_matrix.shape
