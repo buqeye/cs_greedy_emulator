@@ -928,7 +928,7 @@ class MatrixNumerovROM:
         self.S[self.mask_fit_asympt_limit, :] = np.eye(self.num_pts_fit_asympt_limit)
         self.fit_matrix = np.linalg.pinv(self.design_matrix_FG) @ self.S.T
         self.norm_Minv_Sdagger = np.linalg.norm(self.fit_matrix, ord=2)  # 2-norm (i.e., largest singular vector)
-        assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.Minv_Sdagger}"
+        assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.norm_Minv_Sdagger}"
 
         # FOM solver (all-at-once Numerov)
         rseParams = {"grid": grid, 
