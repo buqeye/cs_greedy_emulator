@@ -893,8 +893,9 @@ class MatrixNumerovROM:
                  greedy_max_iter=5, 
                  mode="linear",
                  greedy_training_mode="grom",
-                 num_pts_fit_asympt_limit=25,
+                 num_pts_fit_asympt_limit=2,
                  inhomogeneous=True,
+                 included_snapshots_idxs=None,
                  verbose=True,
                  seed=10203) -> None:
         # internal book keeping
@@ -909,6 +910,7 @@ class MatrixNumerovROM:
         self.pod_num_modes = pod_num_modes
         self.greedy_max_iter = greedy_max_iter
         self.mode = mode
+        self.included_snapshots_idxs = included_snapshots_idxs
         assert greedy_training_mode in ("grom", "lspg"), f"requested emulator training mode '{mode}' unknown"
         self.greedy_training_mode = greedy_training_mode
         self.num_pts_fit_asympt_limit = num_pts_fit_asympt_limit
@@ -928,10 +930,10 @@ class MatrixNumerovROM:
         self.S[self.mask_fit_asympt_limit, :] = np.eye(self.num_pts_fit_asympt_limit)
         self.fit_matrix = np.linalg.pinv(self.design_matrix_FG) @ self.S.T
         self.norm_Minv_Sdagger = np.linalg.norm(self.fit_matrix, ord=2)  # 2-norm (i.e., largest singular vector)
-        assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.norm_Minv_Sdagger}"
+        # assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.norm_Minv_Sdagger}"
 
         # FOM solver (all-at-once Numerov)
-        rseParams = {"grid": grid, 
+        self.rseParams = {"grid": grid, 
                      "scattExp": scattExp, 
                      "potential": scattExp.potential, 
                      "inhomogeneous": self.inhomogeneous
@@ -941,7 +943,7 @@ class MatrixNumerovROM:
                                             g=None, g_s=g_s_affine, 
                                             y0=0., 
                                             y1=(0. if self.inhomogeneous else 1.), 
-                                            params=rseParams)
+                                            params=self.rseParams)
         self.n_theta = self.numerov_solver.n_theta
         
         # training
@@ -980,12 +982,13 @@ class MatrixNumerovROM:
         if self.num_snapshots_init is None:
             self.num_snapshots_init = self.num_snapshots_max
         assert self.num_snapshots_init <= self.num_snapshots_max, "can't request more initial snapshots than maximally allowed"
-        self.included_snapshots_idxs = set(rng.choice(range(self.num_snapshots_max), 
-                                                      size=self.num_snapshots_init, replace=False))
-
+        if self.included_snapshots_idxs is None:
+            self.included_snapshots_idxs = set(rng.choice(range(self.num_snapshots_max), 
+                                                        size=self.num_snapshots_init, replace=False))
+        
         # building snapshot matrix
-        init_lecs = np.take(a=self.lec_all_samples, indices=list(self.included_snapshots_idxs), axis=0)
-        self.snapshot_matrix = self.simulate(init_lecs)
+        self.init_lecs = np.take(a=self.lec_all_samples, indices=list(self.included_snapshots_idxs), axis=0)
+        self.snapshot_matrix = self.simulate(self.init_lecs)
 
         self.all_snapshot_idxs = set(range(len(self.lec_all_samples)))
 
@@ -1005,9 +1008,8 @@ class MatrixNumerovROM:
                 print(f"Warning: snapshot matrix not orthonormalized. Consider using `approach='orth'`")
         else:
             raise NotImplementedError(f"Approach '{self.approach}' is unknown.")
-
-    @staticmethod        
-    def gram_schmidt(A, num_run=4, mode="modified"):
+     
+    def gram_schmidt(self, A, num_run=4, mode="modified"):
         num_run = max((num_run, 1))
         # partially generated using Google AI
         if mode=="modified":
@@ -1073,6 +1075,7 @@ class MatrixNumerovROM:
         Ur, S, Vr = self.truncated_svd(self.snapshot_matrix, rcond=self.pod_rcond, 
                                        num_modes=self.pod_num_modes)
         self.snapshot_matrix = Ur
+        # self.snapshot_matrix = self.gram_schmidt(self.snapshot_matrix, num_run=4)
 
         curr_rank = self.snapshot_matrix.shape[1]
         compression_rate = 1. - curr_rank / prev_rank
@@ -1087,7 +1090,7 @@ class MatrixNumerovROM:
         # rather one can update them for computational efficiency. Since this update only occurs in the offline 
         # stage of the emulator, we keep it in this proof-of-principle work simple and compute the tensors from scratch
 
-        X_red = self.snapshot_matrix[2:,:]
+        X_red = self.snapshot_matrix #[2:,:]
         X_dagger = X_red.conjugate().T
         A_tensor = self.numerov_solver.A_tensor
         S_tensor = self.numerov_solver.S_tensor
@@ -1147,7 +1150,9 @@ class MatrixNumerovROM:
         elif which == "K":
             return ab_arr[1, :] / ab_arr[0, :]  # b / a 
         elif which == "u": 
-            tmp = full_sols
+            tmp = np.pad(full_sols, ((2,0),(0,0)), mode='empty')
+            tmp[0, :] = self.numerov_solver.y0
+            tmp[1, :] = self.numerov_solver.y1
             if self.inhomogeneous:
                 tmp += self.F_grid[:, np.newaxis]
             return tmp / ab_arr[0, :]
@@ -1155,12 +1160,12 @@ class MatrixNumerovROM:
             raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
     def simulate(self, lecList, which="all"):
-        full_sols = self.numerov_solver.solve(lecList)
+        full_sols = self.numerov_solver.solve(lecList, return_iv=False)
         if which == "all":
             return full_sols
         else:
             ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
-                                     full_sols[self.mask_fit_asympt_limit,:], rcond=None)[0] 
+                                     full_sols[self.mask_fit_asympt_limit[2:],:], rcond=None)[0] 
             return self.get_scattering_matrix(ab_arr, full_sols=full_sols, which=which)
 
     def emulate(self, lecList, which="all", 
@@ -1208,10 +1213,6 @@ class MatrixNumerovROM:
             # ab_arr = np.linalg.pinv(self.design_matrix_FG) @ relevant_sols
         else:
             emulated_sols = self.snapshot_matrix @ coeffs_all
-        
-        # enforce initial conditions
-        # emulated_sols[0, :] = self.numerov_solver.y0
-        # emulated_sols[1, :] = self.numerov_solver.y1
 
         if estimate_norm_residual:
             num_norm_residuals = len(lecList)

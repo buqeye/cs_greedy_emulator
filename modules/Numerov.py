@@ -105,13 +105,16 @@ class MatrixNumerov:
             np.savetxt("class_s.csv", s)
         return A, s
 
-    def solve(self, thetas):
+    def solve(self, thetas, return_iv=True):
         thetas = np.asarray(thetas)
         ret = []
         for theta in thetas:
             A_banded, s = self.get_linear_system(theta)
             sol = solve_banded(l_and_u=self.A_l_and_u, ab=A_banded, b=s)
-            ret.append(np.concatenate([[self.y0, self.y1], sol]))
+            if return_iv:
+                ret.append(np.concatenate([[self.y0, self.y1], sol]))
+            else:
+                ret.append(sol)
         return np.array(ret).T
     
     def residuals(self, xtilde, theta, squared=False, calc_error_bounds=False):

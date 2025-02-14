@@ -23,7 +23,7 @@ class Potential:
                 self.lecAffineLabels = ("V0", "V1")
                 with open("data/minnesota_potential.yaml", 'r') as stream:
                     self.lecBaseValues = yaml.safe_load(stream)
-                # self.lecBaseValues = {"V0": 200, "V1": -91.85, "K0": 1.487, "K1": 0.465}
+                self.lecBaseValues = {"V0": 200, "V1": -91.85, "K0": 1.487, "K1": 0.465}
         else:
             raise NotImplementedError(f"Potential '{self.name}' unknown.")
 
@@ -63,7 +63,8 @@ class Potential:
             if isinstance(lecs, dict):
                 ret.append(lecs)
             else:
-                ret.append({lec_lbl: lec for lec_lbl, lec in zip(self.lecLabels, lecs)})
+                tmp = {lec_lbl: lec for lec_lbl, lec in zip(self.lecLabels, lecs[1:])}
+                ret.append({**self.lecBaseValues, **tmp })
         return ret
 
     @property
