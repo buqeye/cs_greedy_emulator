@@ -893,7 +893,7 @@ class MatrixNumerovROM:
                  greedy_max_iter=5, 
                  mode="linear",
                  greedy_training_mode="grom",
-                 num_pts_fit_asympt_limit=2,
+                 num_pts_fit_asympt_limit=25,
                  inhomogeneous=True,
                  included_snapshots_idxs=None,
                  verbose=True,
@@ -930,7 +930,7 @@ class MatrixNumerovROM:
         self.S[self.mask_fit_asympt_limit, :] = np.eye(self.num_pts_fit_asympt_limit)
         self.fit_matrix = np.linalg.pinv(self.design_matrix_FG) @ self.S.T
         self.norm_Minv_Sdagger = np.linalg.norm(self.fit_matrix, ord=2)  # 2-norm (i.e., largest singular vector)
-        # assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.norm_Minv_Sdagger}"
+        assert self.norm_Minv_Sdagger < 10., f"Warning: larger 2-norm for propagating errors in the phase shifts: {self.norm_Minv_Sdagger}"
 
         # FOM solver (all-at-once Numerov)
         self.rseParams = {"grid": grid, 
@@ -1066,6 +1066,8 @@ class MatrixNumerovROM:
             rcond = np.finfo(s.dtype).eps * max(M, N)
         tol = np.amax(s, initial=0.) * rcond
         num = np.sum(s > tol, dtype=int) if num_modes is None else num_modes # = r
+        pod_eta = 1. - np.sum(s[:num]**2) / np.sum(s**2)
+        print("eta", pod_eta)
         Q = u[:, :num]
         return Q, s[:num], vh.conjugate().transpose()[:, :num]
 
@@ -1075,7 +1077,6 @@ class MatrixNumerovROM:
         Ur, S, Vr = self.truncated_svd(self.snapshot_matrix, rcond=self.pod_rcond, 
                                        num_modes=self.pod_num_modes)
         self.snapshot_matrix = Ur
-        # self.snapshot_matrix = self.gram_schmidt(self.snapshot_matrix, num_run=4)
 
         curr_rank = self.snapshot_matrix.shape[1]
         compression_rate = 1. - curr_rank / prev_rank
@@ -1149,13 +1150,16 @@ class MatrixNumerovROM:
             return num / denom
         elif which == "K":
             return ab_arr[1, :] / ab_arr[0, :]  # b / a 
-        elif which == "u": 
+        elif which in ("all_y0y1", "u"): 
             tmp = np.pad(full_sols, ((2,0),(0,0)), mode='empty')
             tmp[0, :] = self.numerov_solver.y0
             tmp[1, :] = self.numerov_solver.y1
-            if self.inhomogeneous:
-                tmp += self.F_grid[:, np.newaxis]
-            return tmp / ab_arr[0, :]
+            if which == "all_y0y1":
+                return tmp
+            else:
+                if self.inhomogeneous:
+                    tmp += self.F_grid[:, np.newaxis]
+                return tmp / ab_arr[0, :]
         else:
             raise NotImplementedError(f"Scattering matrix '{which}' unknown.")
 
@@ -1203,9 +1207,9 @@ class MatrixNumerovROM:
             # print("sum of the emulator basis coeffs", np.sum(coeffs_curr))
         coeffs_all = np.array(coeffs_all).T
         
-        if which in ("ab", "delta", "u", "K", "S"):
+        if which in ("ab", "delta", "u", "K", "S", "all_y0y1"):
             ab_arr = self.matrix_asympt_limit @ coeffs_all
-            emulated_sols = self.snapshot_matrix @ coeffs_all if which == "u" else None
+            emulated_sols = self.snapshot_matrix @ coeffs_all if which in ("u", "all_y0y1") else None
             return self.get_scattering_matrix(ab_arr, full_sols=emulated_sols, which=which)
             # alternatively, one could use the following options:
             # relevant_sols = self.snapshot_matrix[self.mask_fit_asympt_limit,:] @ coeffs_all
@@ -1224,7 +1228,7 @@ class MatrixNumerovROM:
             if self_test or calc_error_bounds:
                 norm_residuals_FOM = np.empty(num_norm_residuals)
                 for ilecs, lecs in enumerate(lecList):
-                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[2:,ilecs], lecs, squared=False,
+                    norm_residuals_FOM[ilecs], bounds = self.numerov_solver.residuals(emulated_sols[:,ilecs], lecs, squared=False,
                                                                                       calc_error_bounds=calc_error_bounds)
                     error_bounds.append(bounds)  # may be None
                 error_bounds = np.array(error_bounds)
@@ -1433,12 +1437,12 @@ class MatrixNumerovROM:
                 self.update_offline_stage(update_matrix_asympt_limit=False)
                 # for performance optimization, we add one column to `matrix_asympt_limit` manually,
                 # instead of letting `update_offline_stage` recompute it completely.
-                to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, self.snapshot_matrix[self.mask_fit_asympt_limit, -1], rcond=None)[0] 
+                to_be_added_a_b = np.linalg.lstsq(self.design_matrix_FG, self.snapshot_matrix[self.mask_fit_asympt_limit[2:], -1], rcond=None)[0] 
                 self.matrix_asympt_limit = np.column_stack((self.matrix_asympt_limit, to_be_added_a_b))
 
                 # useful for debugging: check that updated a,b matrix matches recomputed a,b matrix
                 # ab_arr = np.linalg.lstsq(self.design_matrix_FG, 
-                #                         self.snapshot_matrix[self.mask_fit_asympt_limit, :], rcond=None)[0] 
+                #                         self.snapshot_matrix[self.mask_fit_asympt_limit[2:], :], rcond=None)[0] 
                 # assert np.allclose(self.matrix_asympt_limit, ab_arr), "something's wrong with the updated (a,b) matrix (containing the asympt. limit parameters)"
 
                 # `qr_insert` will raise a `LinAlgError` if one of the columns of u lies in the span of Q,
