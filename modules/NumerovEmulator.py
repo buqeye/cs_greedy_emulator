@@ -902,7 +902,7 @@ class MatrixNumerovROM:
         self.scattExp = scattExp
         self.grid = grid
         self.free_lecs = free_lecs
-        assert bool(free_lecs) != bool(init_snapshot_lecs), "either `free_lecs` or `init_snapshot_lecs` has to be specified" 
+        assert not( (free_lecs is None) and (init_snapshot_lecs is None)), "either `free_lecs` or `init_snapshot_lecs` has to be specified" 
         self.num_snapshots_init = num_snapshots_init
         self.num_snapshots_max = num_snapshots_max
         self.approach = approach
