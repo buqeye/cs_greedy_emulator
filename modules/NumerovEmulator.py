@@ -1066,8 +1066,8 @@ class MatrixNumerovROM:
             rcond = np.finfo(s.dtype).eps * max(M, N)
         tol = np.amax(s, initial=0.) * rcond
         num = np.sum(s > tol, dtype=int) if num_modes is None else num_modes # = r
-        pod_eta = 1. - np.sum(s[:num]**2) / np.sum(s**2)
-        print("eta", pod_eta)
+        # pod_eta = 1. - np.sum(s[:nu/m]**2) / np.sum(s**2)
+        # print("eta", pod_eta)
         Q = u[:, :num]
         return Q, s[:num], vh.conjugate().transpose()[:, :num]
 
