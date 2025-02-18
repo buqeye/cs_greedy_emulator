@@ -1458,3 +1458,25 @@ class MatrixNumerovROM:
             self.update_offline_stage(update_matrix_asympt_limit=True)  # here could be an incremental update
         else:
             raise NotADirectoryError(f"Approach '{self.approach}' is unknown.")
+
+
+def worker(lecs, lecs_list_validation, emulator_type, which, args):
+    lhs_emul = MatrixNumerovROM(init_snapshot_lecs=lecs, 
+                                num_snapshots_init=None, 
+                                approach="orth", **args)
+    tmp = lhs_emul.emulate(lecs_list_validation, mode=emulator_type, which=which)
+    return np.array([np.mean(tmp), np.min(tmp), np.max(tmp)])
+    
+def run_LHS_training_sampling(lhs_lecs_array, lecs_list_validation, 
+                              emulator_type, which, args):
+    from multiprocessing import Pool
+    num_processors=6
+
+    p = Pool(processes=num_processors)
+    
+    pool_args = [(i, lecs_list_validation, emulator_type, which, args) for i in lhs_lecs_array]
+    results = p.starmap(worker, pool_args)
+
+    print(results)
+    return results
+
