@@ -897,6 +897,7 @@ class MatrixNumerovROM:
                  inhomogeneous=True,
                  included_snapshots_idxs=None,
                  verbose=True,
+                 label=None,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -918,7 +919,9 @@ class MatrixNumerovROM:
         self.seed = seed
         self.greedy_logging = []
         self.coercivity_constant = 1.
-        self.inhomogeneous = inhomogeneous
+        self.inhomogeneous = inhomogeneous        
+        self.label = "f{approach} ({mode})" if label is None else label
+
         self.mask_fit_asympt_limit = np.concatenate((np.zeros(grid.getNumPointsTotal - self.num_pts_fit_asympt_limit), 
                                                     np.ones(self.num_pts_fit_asympt_limit))).astype(bool)
         self.design_matrix_FG = free_solutions_F_G(l=self.scattExp.l, r=grid.points[self.mask_fit_asympt_limit], 
