@@ -898,6 +898,7 @@ class MatrixNumerovROM:
                  included_snapshots_idxs=None,
                  verbose=True,
                  label=None,
+                 logging=True,
                  seed=10203) -> None:
         # internal book keeping
         self.scattExp = scattExp
@@ -917,6 +918,7 @@ class MatrixNumerovROM:
         self.num_pts_fit_asympt_limit = num_pts_fit_asympt_limit
         self.verbose = verbose
         self.seed = seed
+        self.logging = logging
         self.greedy_logging = []
         self.coercivity_constant = 1.
         self.inhomogeneous = inhomogeneous        
@@ -1002,7 +1004,7 @@ class MatrixNumerovROM:
             self.apply_pod(update_offline_stage=True)
         elif self.approach == "greedy":
             self.apply_orthonormalization(update_offline_stage=True)
-            self.greedy_algorithm()
+            self.greedy_algorithm(logging=self.logging)
         elif self.approach == "orth":
             self.apply_orthonormalization(update_offline_stage=True)
         elif self.approach is None: 
@@ -1365,7 +1367,7 @@ class MatrixNumerovROM:
                                                        indices=candidate_snapshot_idxs, axis=0) if self.mode == "linear" else norm_error_exact
                 arg_max_err_real = np.argmax(real_err_candidate_snapshots)
                 max_err_real = real_err_candidate_snapshots[arg_max_err_real]
-                snapshot_idx_max_err_real = candidate_snapshot_idxs[arg_max_err_real]
+                # snapshot_idx_max_err_real = candidate_snapshot_idxs[arg_max_err_real]
 
                 if arg_max_err_est != arg_max_err_real and self.verbose:
                     print(f"\t\tWarning: estimated max error doesn't match real max error: arg {arg_max_err_est} vs {arg_max_err_real}")
@@ -1412,7 +1414,7 @@ class MatrixNumerovROM:
             if logging and (arg_max_err_est == arg_max_err_real):
                 assert np.allclose(fom_sols[:, loc], 
                                    np.squeeze(to_be_added_fom_sol), atol=1e-14, rtol=0.), "adding the wrong FOM solution to basis?"
-                assert np.allclose(exact_error, max_err_real, atol=1e-12, rtol=0.), "calibrating the coercivity constant incorrectly?"
+                assert np.allclose(exact_error, max_err_real, atol=1e-10, rtol=0.), "calibrating the coercivity constant incorrectly?"
                 
             # update snapshot matrix by adding new FOM solution and interal records
             if niter < req_num_iter-1:

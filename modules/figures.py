@@ -13,10 +13,10 @@ from itertools import combinations
 class convergenceAnalysis:
     def __init__(self, 
                  param_samples,
-                 l=0, E_MeV=100,
+                 l=0, E_MeV=50,
                  potential_lbl="minnesota",
-                 snapshot_range=(2, 4+1),
-                 num_sample=350,
+                 snapshot_range=(3, 8+1),
+                 num_sample=400,
                  inhomogeneous=True, 
                  emulator_type="grom", 
                  which="K"):
@@ -57,6 +57,7 @@ class convergenceAnalysis:
                         mode="random",
                         inhomogeneous=inhomogeneous,
                         verbose=False,
+                        logging=False,
                         seed=None
                         )
 
@@ -73,16 +74,15 @@ class convergenceAnalysis:
         x_emu = self.scattExp.p / output_emulator
         x_sim = self.scattExp.p / self.output_simulator
         return np.log10(np.abs((x_emu - x_sim) / x_sim))
-        # return np.abs(x_emu - x_sim) / (np.abs(x_emu) + np.abs(x_emu)) * 2.
+        # return np.log10(np.abs(x_emu - x_sim) / (np.abs(x_emu) + np.abs(x_emu)) * 2.)
 
-    def get_worst_best_init_greedy_emulator(self):
+    def get_worst_best_init_greedy_emulator(self, take_all=True):
         # find best and worst initial training basis (as measured by the mean error) to start off the greedy algorithm
         use_set = self.param_samples["training"]
         combinatorics = list(combinations(range(len(use_set)), self.snapshot_range[0]))
-        size = np.min((self.num_sample, len(combinatorics)))
-
+        size = len(combinatorics) if take_all else np.min((self.num_sample, len(combinatorics)))
+        
         print(f"scanning {size} (out of {len(combinatorics)}) for best/worst initial emulator basis")
-        # rng = np.random.default_rng(seed=1234520053)
         lec_idxs_array = self.rng.choice(combinatorics, size=size, replace=False)
         tmp_arr = []
         for idxs in lec_idxs_array:
@@ -133,10 +133,9 @@ class convergenceAnalysis:
         df = pd.DataFrame()
         for num_snapshots in range(*self.snapshot_range):
             combinatorics = list(combinations(self.param_samples["training"], num_snapshots))
-            print(f"\trunning with {num_snapshots} (out of {len(combinatorics)}) snapshots")
-            lhs_lecs_array = self.rng.choice(combinatorics, 
-                                        size=np.min((self.num_sample, len(combinatorics))), 
-                                        replace=False)
+            size = np.min((self.num_sample, len(combinatorics)))
+            lhs_lecs_array = self.rng.choice(combinatorics, size=size, replace=False)
+            print(f"\trunning with {num_snapshots} snapshots")
             for lecs in lhs_lecs_array:
                 lhs_emul = MatrixNumerovROM(init_snapshot_lecs=lecs, 
                                             num_snapshots_init=None, 
@@ -154,7 +153,7 @@ class convergenceAnalysis:
         for num_snapshots in range(*self.snapshot_range):
             print(f"\trunning with {num_snapshots} snapshots")
             for emu in self.greedy_emulators:
-                assert num_snapshots == len(emu.included_snapshots_idxs)
+                assert num_snapshots == len(emu.included_snapshots_idxs), "mismatching number of included snapshots"
                 tmp = emu.emulate(self.lecs_list_validation, mode=self.emulator_type, which=self.which)
                 df_tmp = pd.DataFrame(data={"approach": emu.label, "num_snapshots": num_snapshots, 
                                             "error": self.y_axis_quantity(tmp)})
