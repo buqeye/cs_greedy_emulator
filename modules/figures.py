@@ -199,6 +199,7 @@ def convergenceFig(df_E_MeV_arr, E_MeV_arr, emulator_type):
                             sharex=True, sharey=True, constrained_layout=True)
 
     for idf, df in enumerate(df_E_MeV_arr):
+        df = df[df["emulator_type"] == emulator_type]
         ax=axs[idf]
         # sns.violinplot(data=df, x="num_snapshots", y="error", hue="approach",
         #             gap=.15, split=True, inner="quart", ax=ax, fill=True,
@@ -208,11 +209,11 @@ def convergenceFig(df_E_MeV_arr, E_MeV_arr, emulator_type):
                     showfliers = False,
                     whis=(1, 99), legend="auto")
         if idf == 0:
-            ax.set_title("relative error in $|p/K|$")
+            ax.set_title("relative error in $p/K$")
         ax.xaxis.set_minor_locator(plt.NullLocator())
     #     ax.set_xlim(1.5,12.5)
     #     ax.xaxis.set_major_locator(ticker.MultipleLocator(1)) 
-        ax.set_xlabel("Number of active snapshots")
+        ax.set_xlabel("Number of snapshots/dominant POD modes")
         # ax.set_ylim(top=6, bottom=-11)
         # ax.set_yscale('log')
         # ax.set_ylabel(r"base-10 logarithmic relative error in $|p/K|$")
@@ -226,4 +227,4 @@ def convergenceFig(df_E_MeV_arr, E_MeV_arr, emulator_type):
         # if idf == 0:
         ax.legend(ncol=2, fontsize=7, handlelength=2)
         # plt.ylim(bottom=1e-9)
-        fig.savefig(f"convergence_minnesota_{emulator_type}_logaxis_symerror3x.pdf")
+        fig.savefig(f"convergence_minnesota_{emulator_type}_logaxis_symerror.pdf")
