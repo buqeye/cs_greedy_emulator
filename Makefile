@@ -36,10 +36,10 @@ install_cubature:
 	export MYLOCAL=${HOME}/src
 	mkdir -p ${MYLOCAL}
 	git clone git@github.com:stevengj/cubature.git ${MYLOCAL}/cubature
-	cp src/Makefile_cubature_repl ${MYLOCAL}/cubature
+	cp src/Makefile_cubature_repl ${MYLOCAL}/cubature/Makefile
 	make -C ${MYLOCAL}/cubature
-	make -C ${MYLOCAL}/cubature PREFIX=${MYLOCAL}
-	echo "add the line 'export MYLOCAL=${HOME}/src' to your shell rc-file [e.g., in `~/zshrc`]."
+	make -C ${MYLOCAL}/cubature install PREFIX=${MYLOCAL}
+	echo "add the line 'export MYLOCAL=${HOME}/src' to your shell rc-file [e.g., in '~/zshrc']."
 
 BACKUP:=backup_evc_`date +"%Y-%m-%d"`.zip
 backup :
