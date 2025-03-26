@@ -1,20 +1,17 @@
 # Greedy Emulators for Nuclear Two-Body Scattering
 
-<p><img align="right" width="480" src="./logos/streamline.png">
-The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering.</p>
+![Logo of the STREAMLINE collaboration](./logos/streamline.png "Logo of the STREAMLINE collaboration"){: style="float:right;width:280"}
+The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering. This repository accompanies our [manuscript](https://arxiv.org/) in preparation.
 
 **At a glance:**   
 * Numerov method in matrix form (FOM solver)
 * Galerkin reduced order model (ROM) based on the Numerov method
 * Proper Orthogonalization (POD)
 * efficient offline-online decomposition
-* error estimates and greedy algorithm
+* error estimates and greedy algorithm for snapshot seelction
 
 The two developed emulators are based on the Petrov-Galerking Reduced Basis Method (RBM). They implement a **greedy approach** to refine their basis iteratively in the training stage, placing snapshots in the interaction’s parameter space where the emulator’s error is estimated to be maximum.  This algorithm implements the estimation of emulator errors, which is still in its infancy in nuclear physics, and has a wide range of applications for emulating solutions of large linear systems. 
 This algorithm is contrasted with a **Proper Orthogonalization Decomposition (POD)**.
-
-This repository accompanies our manuscript.
-
 
 ## Overview
 
@@ -46,8 +43,8 @@ This will also run a unittest that checks whether the function returning the aff
 
 Install requirements by running:
 ```shell
-python3 -m venv env
-source env/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 # deactivate ## when the job is done
 ```
@@ -64,11 +61,6 @@ make install_cubature CXX=g++-14
 ```
 
 The location of this installation will be `~/src/cubature`.
-
-Optional: set environment variable to plot the phase shift data obtained from the PWA '93, which are located in our Dropbox.
-```shell
-export NNPHASESHIFTS=<path to NN phase shifts>  # e.g., "~/Dropbox/uq-emulators/nn-online_phaseshifts"
-```
 
 Compile the local chiral interactions GT+ ([external C++ code](src/localGt+.cpp) provided by the developers):
 ```shell
