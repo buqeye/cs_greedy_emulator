@@ -1,7 +1,9 @@
 # Greedy Emulators for Nuclear Two-Body Scattering
 
 <p><img align="right" width="480" src="./logos/streamline.png">
-The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering. This repository accompanies our [manuscript](https://arxiv.org/) in preparation.
+The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering. 
+  
+This repository accompanies our [manuscript](https://arxiv.org/) in preparation.
 
 **At a glance:**   
 * Numerov method in matrix form (FOM solver)
