@@ -21,7 +21,8 @@ class convergenceAnalysis:
                  inhomogeneous=True, 
                  emulator_type="lspg", 
                  which="K",
-                 seed=None):
+                 seed=None,
+                 take_all=True):
         self.snapshot_range = snapshot_range
         self.E_MeV = E_MeV
         self.num_sample = num_sample
@@ -30,7 +31,7 @@ class convergenceAnalysis:
         self.which = which
         self.rng = np.random.default_rng(seed=seed)
 
-        potentialArgs = {"label": potential_lbl, "kwargs": {"potId": 213}}
+        potentialArgs = {"label": potential_lbl, "potId": 213}
         channel = Channel(S=0, L=l, LL=l, J=l, channel=0)
         potential = Potential(channel, **potentialArgs)
 
@@ -71,7 +72,7 @@ class convergenceAnalysis:
                             approach="pod", **self.args)
         self.output_simulator = tmp.simulate(self.lecs_list_validation, which=which)
 
-        self.greedy_emulators = self.get_worst_best_init_greedy_emulator()
+        self.greedy_emulators = self.get_worst_best_init_greedy_emulator(take_all=take_all)
 
     def y_axis_quantity(self, output_emulator):
         # specify what to plot on y axis
@@ -90,7 +91,8 @@ class convergenceAnalysis:
         print(f"scanning {size} (out of {len(combinatorics)}) for best/worst initial emulator basis")
         lec_idxs_array = self.rng.choice(combinatorics, size=size, replace=False)
         tmp_arr = []
-        assert len(lec_idxs_array) == comb(len(use_set), self.snapshot_range[0]), "something's wrong with the combinatorics"
+        if take_all:
+            assert len(lec_idxs_array) == comb(len(use_set), self.snapshot_range[0]), "something's wrong with the combinatorics"
         for idxs in lec_idxs_array:
             lecs = np.take(use_set, indices=idxs)
             emul = MatrixNumerovROM(init_snapshot_lecs=lecs, 
