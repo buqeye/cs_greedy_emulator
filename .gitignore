@@ -6,6 +6,7 @@ __pycache__
 .DS_Store
 .idea/
 venv
+.venv
 env
 *.o
 *.so
