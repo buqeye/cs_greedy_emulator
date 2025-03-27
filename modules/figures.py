@@ -20,13 +20,14 @@ class convergenceAnalysis:
                  num_sample=200,
                  inhomogeneous=True, 
                  emulator_type="lspg", 
-                 which="K"):
+                 which="K",
+                 seed=None):
         self.snapshot_range = snapshot_range
         self.num_sample = num_sample
         self.inhomogeneous = inhomogeneous
         self.emulator_type = emulator_type
         self.which = which
-        self.rng = np.random.default_rng(seed=None)
+        self.rng = np.random.default_rng(seed=seed)
 
         potentialArgs = {"label": potential_lbl, "kwargs": {"potId": 213}}
         channel = Channel(S=0, L=l, LL=l, J=l, channel=0)
