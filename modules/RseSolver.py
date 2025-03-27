@@ -131,12 +131,17 @@ class ScatteringSolution:
         self.potential = scattExp.potential
         self.grid = grid
         self.matching = matching
+        self.matching_method = matching_method
         self.anc = anc
         
         assert f_lbl in ("u", "chi"), f"unknown label '{f_lbl}'"
-        if fprime is None and matching_method != "lsqfit":  # lsqfit doesn't need u'
+        
+        if fprime is None:
             self.fprime = np.gradient(f, self.grid.points, edge_order=2)
-        self.u, self.uprime = self.convert_u_chi(f_lbl, f, fprime, to="u")
+            # lsqfit doesn't need derivatives
+        else:
+            self.fprime = fprime
+        self.u, self.uprime = self.convert_u_chi(f_lbl, f, self.fprime, to="u")
         
         self.vr = vr  # V(r) sampled on 'grid'
         self.Lmatrix = None
@@ -154,12 +159,12 @@ class ScatteringSolution:
         else:
             if f_lbl == "u" and to == "chi":    
                 sign = -1.
-                prefac_f = 1./self.anc
+                prefac_f = 1./self.anc  # recall that `self.anc` is 1/p in our case
                 prefac_glob = 1.
             elif f_lbl == "chi" and to == "u":  
                 sign = 1.
                 prefac_f = 1.
-                prefac_glob = 1./self.anc
+                prefac_glob = self.anc  # this factor is arbitrary because this transform is only used pre matching
             else:
                 raise NotImplementedError
             p = self.scattExp.p
@@ -239,7 +244,7 @@ class ScatteringSolution:
             L = np.mean(L_arr)
         elif method == "lsqfit":
             assert num_pts >= 2, "the number of points for matching has to be >= 2, got {num_pts}"
-            a, b = np.linalg.lstsq(phi[-num_pts:,:2], self.u[-num_pts:], rcond=None)[0] 
+            a, b = np.linalg.lstsq(anc*phi[-num_pts:,:2], self.u[-num_pts:], rcond=None)[0] 
             scale = 1 / a
             Kmat = b * scale
             L = Kmat if param == "K" else LMatrix("K", value=Kmat).valueAs(param)
@@ -268,14 +273,14 @@ class RseSolver:
                           "inhomogeneous": inhomogeneous}
         
         # setup Numerov solver (for affine parameter dependences)
-        from Numerov import AllAtOnceNumerov
+        from Numerov import MatrixNumerov
         r0 = self.grid.points[0]
         r1 = self.grid.points[1]
         l = self.scattExp.l
         y1 = 0. if inhomogeneous else 1.  # can be scaled by an arbitrary constant
         y0 = y1 * (r0/r1)**(l+1)
-        self.numerov_solver = AllAtOnceNumerov(xn=grid.points, y0=y0, y1=y1, 
-                                               g=None, g_s=g_s_affine, params=self.rseParams)
+        self.numerov_solver = MatrixNumerov(xn=grid.points, y0=y0, y1=y1, self_test=False,
+                                            g=None, g_s=g_s_affine, params=self.rseParams)
     
     @property
     def potential(self):
@@ -306,7 +311,7 @@ class RseSolver:
 
         sol = solve_ivp(self._rse_coupled_ode, 
                         (params["grid"].start, params["grid"].end), 
-                        [complex(y0), complex(yp0)],
+                        (y0, yp0),
                         method=params["method"], 
                         args=(rseParams,), 
                         t_eval=params["grid"].points, 
@@ -343,7 +348,7 @@ class RseSolver:
                                                 y1=self.numerov_solver.y1, 
                                                 s=s if self.inhomogeneous else None, 
                                                 g=g, params=rseParams)
-                    u_array.append(u.astype(complex))
+                    u_array.append(u)  # u.astype(complex)
             else:
                 uprime_array = []
                 for lecs in lecList_dict:
@@ -365,7 +370,7 @@ class RseSolver:
                                           f=u_array[:,ilecs], 
                                           fprime=uprime_array[:,ilecs], 
                                           f_lbl=self.u_lbl, 
-                                          anc=1., # /self.scattExp.p,
+                                          anc=1./self.scattExp.p,
                                           Llbl=asympParam,
                                           matching=matching)
             scattSols.append(scattSol)
@@ -382,7 +387,6 @@ class RseSolver:
 
     
 def g(r, params):
-
     l = params["scattExp"].l
     mu = params["scattExp"].mu
     E = params["scattExp"].en

@@ -10,7 +10,11 @@ def diag_ord_form_to_mat(ab, ab_l_and_u, toarray=False):
     return spmat.toarray() if toarray else spmat.tocsc()
 
 
-class AllAtOnceNumerov:
+class MatrixNumerov:
+    """
+    implements the matrix-based Numerov method with y = {y_2, ..., y_N} and given y_0 and y_1. 
+    This method does not impose any asymptotic limit parametrization.
+    """
     def __init__(self, xn, g, s=None, g_s=None, y0=0., y1=1., params=None, self_test=True) -> None:
         # build Numerov matrix
         ## preliminaries
@@ -33,7 +37,7 @@ class AllAtOnceNumerov:
         self.y1 = y1
 
         # construct banded (!) matrix
-        self.A_l_and_u= 2, 0
+        self.A_l_and_u = 2, 0
         self.A_bandwidth = sum(self.A_l_and_u)+1
         self.Abar_tensor = np.einsum("i,ja->aij", 
                                   np.array([1., 10., 1.]) * self.step_fac, 
@@ -68,7 +72,6 @@ class AllAtOnceNumerov:
         return tmp
 
     def test_prestore(self, atol=1e-14):
-        print("testing")
         def d(i,j):
             return int(i==j)
         l = self.params["scattExp"].l
@@ -84,13 +87,12 @@ class AllAtOnceNumerov:
         def Dbar(i,j):
             return 1 - d(3,i) * d(j,self.N-2) - (d(2,i) + d(3,i)) * d(j,self.N-1)
 
-        Aija = np.ones((self.n_theta, 3, self.N-1)) * 1e9
+        Aija = np.ones((self.n_theta, self.A_bandwidth, self.N-1)) * 1e9
         for i in range(1,3+1):
             for j in range(1, self.N-1+1):
                 for a in range(0, self.n_theta):
                     Aija[a, i-1,j-1] = d(a,0) * (1-3 * d(i,2)) * Dbar(i,j) \
                                 + self.step_fac * self.gn[j+1,a] * (1 + 9 * d(i,2)) * Dbar(i,j)
-        print(np.max(np.abs(Aija- self.Abar_tensor)))
         assert np.allclose(Aija, self.Abar_tensor, atol=atol, rtol=0.), "Aijk inconsistent"
 
     def get_linear_system(self, theta, ret_diag_form=True, file_dump=False):
@@ -103,23 +105,25 @@ class AllAtOnceNumerov:
             np.savetxt("class_s.csv", s)
         return A, s
 
-    def solve(self, thetas):
+    def solve(self, thetas, return_iv=True):
         thetas = np.asarray(thetas)
         ret = []
         for theta in thetas:
             A_banded, s = self.get_linear_system(theta)
             sol = solve_banded(l_and_u=self.A_l_and_u, ab=A_banded, b=s)
-            ret.append(np.concatenate([[self.y0, self.y1], sol]))
+            if return_iv:
+                ret.append(np.concatenate([[self.y0, self.y1], sol]))
+            else:
+                ret.append(sol)
         return np.array(ret).T
     
-    def residuals(self, xtilde, theta, squared=True, calc_error_bounds=False):
+    def residuals(self, xtilde, theta, squared=False, calc_error_bounds=False):
         A, s = self.get_linear_system(theta, ret_diag_form=False)
-        # A = diag_ord_form_to_mat(A_banded, ab_l_and_u=self.A_l_and_u, toarray=True)
         residual = s - A @ xtilde
         norm_residual = np.linalg.norm(residual)
         lower_bound = None 
         upper_bound = None
-        if calc_error_bounds:
+        if calc_error_bounds:  # expensive
             svals = np.linalg.svd(A, compute_uv=False)
             lower_bound = norm_residual / svals[0]  # sval_lm
             upper_bound = norm_residual / svals[-1]  # sval_sm
@@ -127,7 +131,12 @@ class AllAtOnceNumerov:
         return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
-class EverythingAllAtOnceNumerov:
+class AllAtOnceNumerov:
+    """
+    implements the matrix-based Numerov method with y = {y_1, y_2, ..., y_N, T} and given y_0. note that
+    y_1 is in the solution vector and does not require an initial value. This Numerov method is complex-valued.
+    The components corresponds to the asymptotic limit parametrization F + T H^+, where H^+ is one of the two Hankel function. 
+    """
     def __init__(self, xn, g, s=None, g_s=None, y0=0., params=None, self_test=False) -> None:
         # build Numerov matrix
         ## preliminaries
@@ -157,15 +166,15 @@ class EverythingAllAtOnceNumerov:
         p = params["scattExp"].p
         l = params["scattExp"].l
         F_G = free_solutions_F_G(l, p=p, r=xn[-2:])
-        print("test")
-        Hplus = F_G[:, 1] + F_G[:, 0]  # G + i F
+
+        Hplus = F_G[:, 1] + 1j*F_G[:, 0]  # G + 1j*F
 
         # build rhs vector s
         mask = np.outer([1., 10., 1.], np.ones(self.N+1, dtype=np.complex128))
         mat = spdiags(mask, diags=(0,1,2), m=self.N+1, n=self.N+1)
         mat = self.step_fac * mat @ self.sn 
         mat[-2:, :] = 0.
-        mat[-2:, 0] = 0. if params["inhomogeneous"] else F_G[:, 0]
+        mat[-2:, 0] = (1. - (p if params["inhomogeneous"] else 0.)) * F_G[:, 0]
         self.S_tensor = mat.T
 
         if self_test:
@@ -173,7 +182,7 @@ class EverythingAllAtOnceNumerov:
             rhs[:,:-2] = self.step_fac * np.array([self.sn[n,:] 
                                                 + 10*self.sn[n-1,:] 
                                                 + self.sn[n-2,:] for n in range(2, self.N+1)]).T
-            rhs[0,-2:] = 0. if params["inhomogeneous"] else F_G[:, 0].T
+            rhs[0,-2:] = (1. - (p if params["inhomogeneous"] else 0.)) * F_G[:, 0].T
             assert np.allclose(self.S_tensor, rhs, atol=1e-14, rtol=0.), "inconsistent S_tensor"
 
         # build matrix in diagonal ordered form
@@ -193,7 +202,8 @@ class EverythingAllAtOnceNumerov:
         
         ## third row
         ab[:, 2, :self.N-2] = self.step_fac * self.gn[1:self.N-1,:].T
-        ab[0, 2, :-1] += 1.
+        ab[0, 2, :-3] += 1.
+        ab[0, 2, -3:-1] = p
 
         ## last column 
         # ab[0, :2, -1] = -F_G[:, 1]
@@ -241,7 +251,12 @@ class EverythingAllAtOnceNumerov:
         return norm_residual**2 if squared else norm_residual, (lower_bound, upper_bound)
 
 
-class EverythingAllAtOnceNumerovNoMatch:
+class MatrixNumerov_ab:
+    """
+    implements the matrix-based Numerov method with y = {y_2, ..., y_N, a, b} and given y_0 and y_1.
+    The two components (a, b) correspond to the asymptotic limit parametrization a F + b G. The parameters 
+    (a, b) are obtained by solving a 2x2 matrix equation.
+    """
     def __init__(self, xn, g, s=None, g_s=None, y0=0., y1=0.,params=None, self_test=False) -> None:
         # build Numerov matrix
         ## preliminaries

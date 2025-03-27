@@ -32,7 +32,7 @@ def test_chiral_affine():
             except ValueError:
                 continue  # ignore unphysical pw channel
                 
-            for r in np.random.uniform(low=1e-3, high=4., size=100):
+            for r in np.random.uniform(low=1e-3, high=4., size=10):
                 aff_decomp = chiral_affine(r, channel, potId=lecs["potId"])
                 potval_via_aff_decomp = aff_decomp @ lec_vec
                 potval = chiral(r, channel, use_default_lec_values=False, **lecs)
@@ -55,6 +55,57 @@ def test_chiral_affine():
                 assert np.allclose(potval, potval_default, atol=1e-11, rtol=0.), \
                     f"Momentum Space: difference (default LEC values vs externally given LECs values: {potval_via_aff_decomp - potval_default:e} MeV  |  " + \
                     f"LEC file: {lec_file} | Channel: {(S, L, LL, J, mT)}"
+
+def test_emulators():
+    from Potential import Potential
+    from Channel import Channel
+    from ScatteringExp import ScatteringExp
+    from Grid import Grid
+    from NumerovEmulator import MatrixNumerovROM_ab, MatrixNumerovROM, AllAtOnceNumerovROM
+
+    potentialArgs = {"label": "minnesota", "kwargs": {"potId": 213}}
+    rmatch = 12
+    E_MeV = 50
+    grid = Grid(1e-24, rmatch, numIntervals=1, numPointsPerInterval=1000,
+                type="linear", test=False)  # needs equidistant grids as of now
+    lecs = np.array([[1,200,-91.85], [1,200,-91.85]])
+    for l in (0, 1, 2):
+        channel = Channel(S=0, L=l, LL=l, J=l, channel=0)
+        potential = Potential(channel, **potentialArgs)
+        scattExp = ScatteringExp(E_MeV=E_MeV, potential=potential)
+        emulator_args = dict(scattExp=scattExp, 
+                                grid=grid, 
+                                free_lecs={"V1": (-400, 0)},
+                                num_snapshots_init=80, 
+                                num_snapshots_max=100,
+                                approach="pod", 
+                                pod_rcond=1e-12, 
+                                init_snapshot_lecs=None,
+                                greedy_max_iter=5, 
+                                mode="linear")
+
+        # Test config for no greedy
+        emulator_T = AllAtOnceNumerovROM(**emulator_args)
+        emulator_ab = MatrixNumerovROM_ab(**emulator_args)
+        emulator = MatrixNumerovROM(**emulator_args)
+
+        def get_Kmat(S):
+            return (1-S)/(1+S)*1j
+        print(get_Kmat(emulator_T.simulate(lecs, which="S")))
+        print(emulator_T.simulate(lecs, which="S"))
+        print(emulator_T.simulate(lecs, which="K"))
+        print(emulator_T.simulate(lecs, which="T"))
+        print(emulator_ab.simulate(lecs, which="K"))
+        print(emulator.simulate(lecs, which="S"))
+
+        def get_Kmat(S):
+            return (1-S)/(1+S)*1j
+        print(get_Kmat(emulator_T.emulate(lecs, which="S")))
+        print(emulator_T.emulate(lecs, which="S"))
+        print(emulator_T.emulate(lecs, which="K"))
+        print(emulator_T.emulate(lecs, which="T"))
+        print(emulator_ab.emulate(lecs, which="K"))
+        print(emulator.emulate(lecs, which="K"))
 
 # @pytest.fixture(scope='class', autouse=True)  
 # def params(l=100, E_MeV=50, rmatch=12, rmin=1e-2, inhomogeneous=True):

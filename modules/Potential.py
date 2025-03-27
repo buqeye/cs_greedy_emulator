@@ -1,29 +1,39 @@
 import numpy as np
-
 import chiralPot
 from constants import *
+import yaml
 
 
 class Potential:
     def __init__(self, channel, **kwargs):
         self.channel = channel
-        self.name = kwargs["label"]
-        self.kwargs = kwargs["kwargs"]
+        self.kwargs = kwargs
         if self.name == 'chiral':
             self.potentialFunction = chiral
-        elif self.name == 'woodssaxon':
-                self.potentialFunction = woodssaxon
-        elif self.name == 'optical':
-                self.potentialFunction = optical
+            self.potentialAffineFunction = chiral_affine
+            self.lecLabels = ("CS", "CT", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "CNN", "CPP")
+            self.lecAffineLabels = self.lecLabels
+            with open(get_chiral_gtplus_lec_filename(self.potId), 'r') as stream:
+                self.lecBaseValues = yaml.safe_load(stream)
+                assert self.lecBaseValues["potId"] == kwargs["potId"], "Error: requested 'potId' doesn't match retrived one."
         elif self.name == 'minnesota':
                 self.potentialFunction = minnesota
+                self.potentialAffineFunction = minnesota_affine
                 self.lecLabels = ("V0", "V1", "K0", "K1")
                 self.lecAffineLabels = ("V0", "V1")
+                with open("data/minnesota_potential.yaml", 'r') as stream:
+                    self.lecBaseValues = yaml.safe_load(stream)
                 self.lecBaseValues = {"V0": 200, "V1": -91.85, "K0": 1.487, "K1": 0.465}
         else:
-            raise ValueError(f"Potential '{self.name}' unknown.")
-        _, testingLecs = self.sampleLecs
-        self.parameter_names = list(testingLecs[0].keys())
+            raise NotImplementedError(f"Potential '{self.name}' unknown.")
+
+    @property
+    def name(self):
+        return self.kwargs["label"]
+
+    @property
+    def potId(self):
+        return self.kwargs["potId"]
 
     def eval(self, r, lecs):
         if isinstance(r, np.ndarray):
@@ -36,38 +46,32 @@ class Potential:
             raise ValueError("Check input parameters of 'Potential.eval()'.")
 
     def evalAffine(self, r):
-        if self.name != "minnesota":
-            raise NotImplementedError
-        Vcomp = [np.zeros_like(r)]
-        r2 = r ** 2
-        K_arr = [1.487, 0.465]
-        for K in K_arr:
-            Vcomp.append(np.exp(-K * r2))
-        return np.array(Vcomp).T  / hbarc
-
-    def lec_array_from_dict(self, lecList_dict):
-        if self.name == "minnesota":
-            return np.array([[1.] +[ lecs_dict[lbl] for lbl in self.lecAffineLabels] for lecs_dict in lecList_dict])
+        if isinstance(r, np.ndarray):
+            return np.array(list(map(lambda rval: self.potentialAffineFunction(rval, self.channel, **self.kwargs), r)),
+                            dtype=np.double) / hbarc
+        elif isinstance(r, float):
+            return self.potentialAffineFunction(r, self.channel, **self.kwargs) / hbarc
         else:
-            raise NotImplementedError
+            raise ValueError("Check input parameters of 'Potential.evalAffine()'.")
+    
+    def lec_array_from_dict(self, lecList_dict):
+            return np.array([[1.] +[ lecs_dict[lbl] for lbl in self.lecAffineLabels] for lecs_dict in lecList_dict])
 
     def get_lec_dict(self, lecList_arr):
-        if self.name == "minnesota":
-            ret = []
-            for lecs in lecList_arr:
-                if isinstance(lecs, dict):
-                    ret.append(lecs)
-                else:
-                    ret.append({lec_lbl: lec for lec_lbl, lec in zip(self.lecAllLabels, lecs)})
-            return ret
-        else:
-            raise NotImplementedError
+        ret = []
+        for lecs in lecList_arr:
+            if isinstance(lecs, dict):
+                ret.append(lecs)
+            else:
+                tmp = {lec_lbl: lec for lec_lbl, lec in zip(self.lecLabels, lecs[1:])}
+                ret.append({**self.lecBaseValues, **tmp })
+        return ret
 
     @property
     def sampleLecs(self):
         return Potential.getSampleLecs(self.name)
 
-    def getLecsSample(self, lecs_variation, n=100, seed=123, 
+    def getLecsSample(self, lecs_variation, n=100, seed=None, 
                       mode="random", as_dict=True):
         lecs_lbl_to_be_varied = list(lecs_variation.keys())
         d = len(lecs_lbl_to_be_varied)
@@ -97,11 +101,10 @@ class Potential:
 
         Returns
         -------
-        LECs for some training and testing
+        LECs for some training and validation
         """
-
         trainingLecs = []
-        testingLecs = []
+        validationLecs = []
 
         if potLbl == 'chiral':
             trainingLecs.append({"CS": 5., "CT": 0.2, "C1": -0.14084, "C2": 0.04243,
@@ -121,80 +124,24 @@ class Potential:
             "C3": -0.12338, "C4": 0.11018, "C5": -2.11254,
             "C6": 0.15898, "C7": -0.26994, "CNN": 0.04344, "CPP": 0.062963})
 
-            testingLecs.append({"CS": 5.43850, "CT": 0.27672, "C1": -0.14084, "C2": 0.04243,
+            validationLecs.append({"CS": 5.43850, "CT": 0.27672, "C1": -0.14084, "C2": 0.04243,
             "C3": -0.12338, "C4": 0.11018, "C5": -2.11254,
             "C6": 0.15898, "C7": -0.26994, "CNN": 0.04344, "CPP": 0.062963})
 
-            testingLecs.append({"CS": 5.53850, "CT": 0.37672, "C1": -0.14084, "C2": 0.04243,
+            validationLecs.append({"CS": 5.53850, "CT": 0.37672, "C1": -0.14084, "C2": 0.04243,
             "C3": -0.12338, "C4": 0.11018, "C5": -2.11254,
             "C6": 0.15898, "C7": -0.26994, "CNN": 0.04344, "CPP": 0.062963})
-
-        elif potLbl == 'woodssaxon':
-            # trainingLecs.append({"depth": 40, "radius": 3, "diffuseness": 0.5})
-            # trainingLecs.append({"depth": 60, "radius": 3, "diffuseness": 0.5})
-            # trainingLecs.append({"depth": 40, "radius": 4, "diffuseness": 0.5})
-            # trainingLecs.append({"depth": 60, "radius": 4, "diffuseness": 0.5})
-            # # trainingLecs.append({"depth": 55, "radius": 3, "diffuseness": 0.5})
-            #
-            # testingLecs.append({"depth": 50, "radius": 3, "diffuseness": 0.5})
-
-            tmp = [{'diffuseness': 0.303, 'depth': 66.69, 'radius': 4.018},
-             {'diffuseness': 0.549, 'depth': 58.072, 'radius': 3.611},
-             {'diffuseness': 0.667, 'depth': 48.636, 'radius': 3.995},
-             {'diffuseness': 0.4, 'depth': 66.28, 'radius': 3.981},
-             {'diffuseness': 0.35, 'depth': 60.526, 'radius': 3.928},
-             {'diffuseness': 0.372, 'depth': 34.963, 'radius': 3.542},
-             {'diffuseness': 0.413, 'depth': 35.917, 'radius': 3.584},
-             {'diffuseness': 0.604, 'depth': 43.708, 'radius': 3.795}]
-            for elem in tmp:
-                trainingLecs.append(elem)
-
-            tmp = [{'diffuseness': 0.628, 'depth': 39.358, 'radius': 3.253}]
-            for elem in tmp:
-                testingLecs.append(elem)
-
-        elif potLbl == 'optical':
-            tmp = 1.2 * np.cbrt(A)
-            trainingLecs.append({"V": 45, "R": tmp, "a": 0.65, "Vw": 5, "Rw": tmp, "aw": 0.65})
-            trainingLecs.append({"V": 55, "R": tmp, "a": 0.65, "Vw": 5, "Rw": tmp, "aw": 0.65})
-            trainingLecs.append({"V": 45, "R": tmp, "a": 0.65, "Vw": 15, "Rw": tmp, "aw": 0.65})
-            trainingLecs.append({"V": 55, "R": tmp, "a": 0.65, "Vw": 15, "Rw": tmp, "aw": 0.65})
-
-            testingLecs.append({"V": 50, "R": tmp, "a": 0.65, "Vw": 10, "Rw": tmp, "aw": 0.65})
 
         elif potLbl == "minnesota":
-            #trainingLecs.append({"V0": 0, "V1": -291.85, "K0": 1.487, "K1": 0.465})
-            #trainingLecs.append({"V0": 100, "V1": 8.15, "K0": 1.487, "K1": 0.465})
-            #trainingLecs.append({"V0": 300, "V1": -191.85, "K0": 1.487, "K1": 0.465})
-            #trainingLecs.append({"V0": 300, "V1": 8.15, "K0": 1.487, "K1": 0.465})
-
-            #testingLecs.append({"V0": 200, "K0": -91.85, "V1": 1.487, "K1": 0.465})
-
-            #trainingLecs.append({"V0": 300, "V1": 8.15, "K0": 1.487, "K1": 0.465})
-
             trainingLecs.append({"V0": 0,   "V1": -291.85, "K0": 1.487, "K1": 0.465})
             trainingLecs.append({"V0": 100, "V1": 8.15, "K0": 1.487, "K1": 0.465})
             trainingLecs.append({"V0": 300, "V1": -191.85, "K0": 1.487, "K1": 0.465})
             trainingLecs.append({"V0": 300, "V1": 8.15, "K0": 1.487, "K1": 0.465})
-
-            testingLecs.append({"V0": 200, "V1": -91.85, "K0": 1.487, "K1": 0.465})
-
-
+            validationLecs.append({"V0": 200, "V1": -91.85, "K0": 1.487, "K1": 0.465})
         else:
             raise ValueError(f"Potential '{potLbl}' unknown.")
 
-        return trainingLecs, testingLecs
-
-
-def woodssaxon(x, chan, **kwargs):
-    return -kwargs["depth"] / (1. + np.exp((x - kwargs["radius"]) / kwargs["diffuseness"]))
-
-
-def woodssurface(x, chan, **kwargs):
-    expon = np.exp(-(x - kwargs["radius"]) / kwargs["diffuseness"])
-
-    return (-kwargs["depth"] * 4. * expon) / (1. + expon) ** 2.
-
+        return trainingLecs, validationLecs
 
 def minnesota(x, chan, **kwargs):
     x2 = x ** 2
@@ -207,6 +154,13 @@ def minnesota(x, chan, **kwargs):
     #else:
     return kwargs["V0"] * np.exp(exp0) + kwargs["V1"] * np.exp(exp1)
 
+def minnesota_affine(r, chan, **kwargs):
+    Vcomp = [np.zeros_like(r)]
+    r2 = r ** 2
+    K_arr = [1.487, 0.465]
+    for K in K_arr:
+        Vcomp.append(np.exp(-K * r2))
+    return np.array(Vcomp).T  # columns indexed by LEC index `a`
 
 def minnesota_full(x, chan, **kwargs):
     u = 1.
@@ -271,8 +225,15 @@ def chiral_lec_trafo_matrix():
     mat[10, 10] = 1
     return mat
 
-def optical(x, chan, **kwargs):
-    kwargsV = {"depth": kwargs["V"], "radius": kwargs["R"], "diffuseness": kwargs["a"]}
-    kwargsW = {"depth": kwargs["Vw"], "radius": kwargs["Rw"], "diffuseness": kwargs["aw"]}
-    return complex(woodssaxon(x, chan, **kwargsV),
-                   woodssaxon(x, chan, **kwargsW))
+def get_parameters_chiral_gtplus(potid):
+    str_repr = str(potid).zfill(3)  # adds leading zeros if necessary
+    idx = [int(elem) for elem in str_repr]
+    chiral_order = ("LO", "NLO", "N2LO")[idx[0]]  # chiral order
+    cutoff = (0.8, 1.0, 1.2, 0.9, 1.1)[idx[1]]  # cutoff
+    sfr_cutoff = (np.nan, np.nan, 800, 1000, 1200, 1400)[idx[2]]  # SFR cutoff
+    return chiral_order, cutoff, sfr_cutoff
+
+def get_chiral_gtplus_lec_filename(potid):
+    chiral_order, cutoff, sfr_cutoff = get_parameters_chiral_gtplus(potid)
+    chiral_order_idx = {"LO": 0, "NLO": 1, "N2LO": 2}
+    return f"data/localGT+_lecs_order_{chiral_order_idx[chiral_order]}_R0_{cutoff}_lam_{sfr_cutoff}.yaml"
