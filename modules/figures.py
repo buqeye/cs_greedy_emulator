@@ -208,7 +208,7 @@ def convergenceFig(df_E_MeV_arr, E_MeV_arr, emulator_type):
         sns.boxplot(data=df, x="num_snapshots", y="error", hue="approach",
                     gap=.25, ax=ax, fill=True, width=.8, log_scale=True,
                     showfliers = False,
-                    whis=(1, 99), legend="auto")
+                    whis=(1, 99), legend="upper right")
         if idf == 0:
             ax.set_title("relative error in $p/K$")
         ax.xaxis.set_minor_locator(plt.NullLocator())
@@ -226,6 +226,6 @@ def convergenceFig(df_E_MeV_arr, E_MeV_arr, emulator_type):
         # ax.text(0.05, 0.05, "base-10 logarithmic relative error in $|p/K|$", 
         #         transform=ax.transAxes)
         # if idf == 0:
-        ax.legend(ncol=2, fontsize=7, handlelength=2)
+        ax.legend(ncol=2, loc="upper right", fontsize=7, handlelength=2)
         # plt.ylim(bottom=1e-9)
         fig.savefig(f"convergence_minnesota_{emulator_type}_logaxis_symerror.pdf")
