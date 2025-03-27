@@ -75,7 +75,16 @@ class Potential:
                       mode="random", as_dict=True):
         lecs_lbl_to_be_varied = list(lecs_variation.keys())
         d = len(lecs_lbl_to_be_varied)
-        bounds = np.array(list(lecs_variation.values()))     
+        bounds = []
+        for lec_lbl, lec_range in lecs_variation.items():
+            if isinstance(lec_range, (int, float)):
+                base_val = self.lecBaseValues[lec_lbl]
+                delta = (lec_range/100) * np.abs(base_val)
+                bounds.append([base_val - delta, base_val + delta])
+            else:
+                bounds.append(lec_range)
+        bounds = np.array(bounds)
+        # bounds = np.array(list(lecs_variation.values()))             
         if mode == "random":
             from scipy.stats import qmc
             sampler = qmc.LatinHypercube(d=d, seed=seed)
