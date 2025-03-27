@@ -48,6 +48,10 @@ source .venv/bin/activate
 python3 -m pip install -r requirements.txt
 # deactivate ## when the job is done
 ```
+One could also manually install (recent versions of) the required `Python` packages via:
+```shell
+python3 -m pip install numpy scipy pandas seaborn jupyter matplotlib cython pyyaml
+```
 Further, `Cython`, `gcc`, and `GSL` need to be installed for the chiral interactions. On MacOS, `gcc` and `GSL` can be installed using HomeBrew:
 ```shell
 brew install gcc gsl
