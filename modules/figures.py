@@ -9,15 +9,17 @@ from Grid import Grid
 from plots.rc_params import *
 from itertools import combinations
 from math import comb
+from string import ascii_lowercase as alphabet
 
 
 class convergenceAnalysis:
     def __init__(self, 
                  param_samples,
-                 l=0, E_MeV=50,
+                 channel_lbl="1S0np", 
+                 E_MeV=50,
                  potential_lbl="minnesota",
                  snapshot_range=(3, 8+1),
-                 num_sample=200,
+                 num_sample=400,
                  inhomogeneous=True, 
                  emulator_type="lspg", 
                  which="K",
@@ -32,7 +34,7 @@ class convergenceAnalysis:
         self.rng = np.random.default_rng(seed=seed)
 
         potentialArgs = {"label": potential_lbl, "potId": 213}
-        channel = Channel(S=0, L=l, LL=l, J=l, channel=0)
+        channel = Channel(as_str=channel_lbl)
         potential = Potential(channel, **potentialArgs)
 
         self.E_MeV = E_MeV
@@ -130,17 +132,27 @@ class convergenceAnalysis:
             tmp = pod_emul.emulate(self.lecs_list_validation, 
                                    mode=self.emulator_type, which=self.which)
             assert pod_emul.snapshot_matrix.shape[1] == num_snapshots, "something's wrong in the POD emulator"
-            df_tmp = pd.DataFrame(data={"approach": "POD", "num_snapshots": num_snapshots, "E_MeV": self.E_MeV,
-                                        "error": self.y_axis_quantity(tmp), "emulator_type": self.emulator_type})
+            df_tmp = pd.DataFrame(data={"approach": "POD", 
+                                        "num_snapshots": num_snapshots, 
+                                        "E_MeV": self.E_MeV,
+                                        "error": self.y_axis_quantity(tmp), 
+                                        "emulator_type": self.emulator_type}
+                                        )
             df = pd.concat((df, df_tmp))
         return df if df_out is None else pd.concat((df_out, df))
 
-    def track_LHS_emulator(self, df_out=None):
+    def track_LHS_emulator(self, df_out=None, max_samples=100000):
         ## randomly selects training points from the training set
         print("tracking LHS emulator")
         df = pd.DataFrame()
         for num_snapshots in range(*self.snapshot_range):
-            combinatorics = list(combinations(self.param_samples["training"], num_snapshots))
+            if comb(len(self.param_samples["training"]), num_snapshots) > max_samples:
+                use_samples = self.rng.choice(self.param_samples["training"], 
+                                              size=max_samples, replace=False)
+            else:
+                use_samples = self.param_samples["training"]
+
+            combinatorics = list(combinations(use_samples, num_snapshots))
             size = np.min((self.num_sample, len(combinatorics)))
             lhs_lecs_array = self.rng.choice(combinatorics, size=size, replace=False)
             print(f"\trunning with {num_snapshots} snapshots ({len(lhs_lecs_array)} samples)")
@@ -151,8 +163,12 @@ class convergenceAnalysis:
                 tmp = lhs_emul.emulate(self.lecs_list_validation, 
                                     mode=self.emulator_type, which=self.which)
                 assert lhs_emul.snapshot_matrix.shape[1] == num_snapshots, "something's wrong in the LHS emulator"
-                df_tmp = pd.DataFrame(data={"approach": "LHS", "num_snapshots": num_snapshots, "E_MeV": self.E_MeV,
-                                            "error": self.y_axis_quantity(tmp), "emulator_type": self.emulator_type})
+                df_tmp = pd.DataFrame(data={"approach": "LHS", 
+                                            "num_snapshots": num_snapshots, 
+                                            "E_MeV": self.E_MeV,
+                                            "error": self.y_axis_quantity(tmp), 
+                                            "emulator_type": self.emulator_type}
+                                            )
                 df = pd.concat((df, df_tmp))
         return df if df_out is None else pd.concat((df_out, df))
 
@@ -188,8 +204,12 @@ class convergenceAnalysis:
             for emu in self.greedy_emulators:
                 assert num_snapshots == len(emu.included_snapshots_idxs), "mismatching number of included snapshots"
                 tmp = emu.emulate(self.lecs_list_validation, mode=self.emulator_type, which=self.which)
-                df_tmp = pd.DataFrame(data={"approach": emu.label, "num_snapshots": num_snapshots, "E_MeV": self.E_MeV,
-                                            "error": self.y_axis_quantity(tmp), "emulator_type": self.emulator_type})
+                df_tmp = pd.DataFrame(data={"approach": emu.label, 
+                                            "num_snapshots": num_snapshots, 
+                                            "E_MeV": self.E_MeV,
+                                            "error": self.y_axis_quantity(tmp),
+                                            "emulator_type": self.emulator_type
+                                            })
                 df = pd.concat((df, df_tmp))
                 emu.greedy_algorithm(req_num_iter=1)
         return df if df_out is None else pd.concat((df_out, df))
@@ -222,14 +242,17 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type):
         # ax.set_yscale('log')
         # ax.set_ylabel(r"base-10 logarithmic relative error in $|p/K|$")
         ax.set_ylabel("")
-        ax.text(0.7, 0.68, f"$E = {E_MeV_arr[iE_MeV]}" + "\; \mathrm{MeV}$ ", 
+        ax.text(0.7, 0.78, f"$E = {E_MeV_arr[iE_MeV]}" + "\; \mathrm{MeV}$ ", 
                 transform=ax.transAxes)
+        props = dict(boxstyle='round', facecolor='lightgray', alpha=0.5)
         emulator_type_lbl = {"GROM": "G-ROM", "LSPG": "LSPG-ROM"}
-        ax.text(0.05, 0.07, f"{emulator_type_lbl[emulator_type.upper()]}", 
-                transform=ax.transAxes)
+        ax.text(0.8, 0.89, f"{emulator_type_lbl[emulator_type.upper()]}", 
+                transform=ax.transAxes, bbox=props)
+        ax.text(0.75, 0.1, f"{alphabet[iE_MeV]})", transform=ax.transAxes)
+        ax.text(0.75, 0.1, f"{alphabet[iE_MeV]})", transform=ax.transAxes)
         # ax.text(0.05, 0.05, "base-10 logarithmic relative error in $|p/K|$", 
         #         transform=ax.transAxes)
         # if iE_MeV == 0:
-        ax.legend(ncol=2, loc="upper right", fontsize=7, handlelength=2)
+        ax.legend(ncol=2, loc="lower left", fontsize=7, handlelength=2)
         # plt.ylim(bottom=1e-9)
         fig.savefig(f"convergence_minnesota_{emulator_type}_logaxis_symerror.pdf")
