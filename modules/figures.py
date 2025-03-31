@@ -141,20 +141,18 @@ class convergenceAnalysis:
             df = pd.concat((df, df_tmp))
         return df if df_out is None else pd.concat((df_out, df))
 
-    def track_LHS_emulator(self, df_out=None, max_samples=100000):
+    def track_LHS_emulator(self, df_out=None, max_samples=10000):
         ## randomly selects training points from the training set
         print("tracking LHS emulator")
         df = pd.DataFrame()
         for num_snapshots in range(*self.snapshot_range):
             if comb(len(self.param_samples["training"]), num_snapshots) > max_samples:
-                use_samples = self.rng.choice(self.param_samples["training"], 
-                                              size=max_samples, replace=False)
+                lhs_lecs_array = [self.rng.choice(self.param_samples["training"], 
+                                                  size=num_snapshots, replace=False) for i in range(max_samples)]
+                lhs_lecs_array = np.array(lhs_lecs_array)
             else:
-                use_samples = self.param_samples["training"]
-
-            combinatorics = list(combinations(use_samples, num_snapshots))
-            size = np.min((self.num_sample, len(combinatorics)))
-            lhs_lecs_array = self.rng.choice(combinatorics, size=size, replace=False)
+                combinatorics = list(combinations(self.param_samples["training"], num_snapshots))
+                lhs_lecs_array = self.rng.choice(combinatorics, size=len(combinatorics), replace=False)
             print(f"\trunning with {num_snapshots} snapshots ({len(lhs_lecs_array)} samples)")
             for lecs in lhs_lecs_array:
                 lhs_emul = MatrixNumerovROM(init_snapshot_lecs=lecs, 
@@ -215,7 +213,7 @@ class convergenceAnalysis:
         return df if df_out is None else pd.concat((df_out, df))
     
 
-def convergenceFig(df_res, E_MeV_arr, emulator_type):
+def convergenceFig(df_res, E_MeV_arr, emulator_type, channel_lbl=None):
     import matplotlib.ticker as ticker 
     import seaborn as sns
     from constants import cm
@@ -249,7 +247,8 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type):
         ax.text(0.8, 0.89, f"{emulator_type_lbl[emulator_type.upper()]}", 
                 transform=ax.transAxes, bbox=props)
         ax.text(0.75, 0.1, f"{alphabet[iE_MeV]})", transform=ax.transAxes)
-        ax.text(0.75, 0.1, f"{alphabet[iE_MeV]})", transform=ax.transAxes)
+        if channel_lbl is not None:
+            ax.text(0.62, 0.1, f"{channel_lbl}", transform=ax.transAxes)
         # ax.text(0.05, 0.05, "base-10 logarithmic relative error in $|p/K|$", 
         #         transform=ax.transAxes)
         # if iE_MeV == 0:
