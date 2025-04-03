@@ -1,5 +1,5 @@
 class Channel:
-    def __init__(self, S=None, L=None, LL=None, J=None, channel=None, as_str=None):
+    def __init__(self, *, S=None, L=None, LL=None, J=None, channel=None, as_str=None):
         if as_str is not None:
             S, L, LL, J, channel = self.parse_spectNotation(as_str)
         self.S = S # spin quantum number
