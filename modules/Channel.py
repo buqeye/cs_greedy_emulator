@@ -95,6 +95,11 @@ class Channel:
         """returns the spectral notation of the channel (TeX)"""
         return f"$^{self.g}\\mathrm{{{self.Lstr}}}_{self.J}^{{({self._ISOSPIN_LBLS[self.channel]})}}$"
 
+    @property
+    def spectNotationTeXShort(self):
+        """returns the spectral notation of the channel with isospin channel specification (TeX)"""
+        return f"$^{self.g}\\mathrm{{{self.Lstr}}}_{self.J}$"
+
     def __str__(self):
         """returns the string representation of the class"""
         return f"{self.spectNotation} [ S={self.S}; L={self.L}; LL={self.LL}; J={self.J}; T={self.T}; chan={self.channel} ]"

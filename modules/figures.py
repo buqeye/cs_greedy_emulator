@@ -240,16 +240,19 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type, channel=None):
         # ax.set_yscale('log')
         # ax.set_ylabel(r"base-10 logarithmic relative error in $|p/K|$")
         ax.set_ylabel("")
-        ax.text(0.7, 0.78, f"$E = {E_MeV_arr[iE_MeV]}" + "\; \mathrm{MeV}$ ", 
-                transform=ax.transAxes)
+        ax.text(0.95, 0.78, f"$E = {E_MeV_arr[iE_MeV]}" + "\; \mathrm{MeV}$ ", 
+                transform=ax.transAxes, horizontalalignment='right')
         props = dict(boxstyle='round', facecolor='lightgray', alpha=0.5)
         emulator_type_lbl = {"GROM": "G-ROM", "LSPG": "LSPG-ROM"}
-        ax.text(0.8, 0.95, f"{emulator_type_lbl[emulator_type.upper()]}", 
+        ax.text(0.95, 0.9, f"{emulator_type_lbl[emulator_type.upper()]}", 
                 transform=ax.transAxes, 
-                horizontalalignment='right', bbox=props)
-        ax.text(0.75, 0.1, f"({alphabet[iE_MeV]})", transform=ax.transAxes)
+                horizontalalignment='right', 
+                bbox=props)
+        ax.text(0.75, 0.045, f"({alphabet[iE_MeV]})", transform=ax.transAxes)
         if channel is not None:
-            ax.text(0.25, 0.35, f"{channel.spectNotationTeX}", transform=ax.transAxes)
+            ax.text(0.05, 0.3, f"{channel.spectNotationTeXShort}", 
+                    bbox=props,
+                    transform=ax.transAxes)
         # ax.text(0.05, 0.05, "base-10 logarithmic relative error in $|p/K|$", 
         #         transform=ax.transAxes)
         # if iE_MeV == 0:
