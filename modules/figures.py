@@ -213,7 +213,7 @@ class convergenceAnalysis:
         return df if df_out is None else pd.concat((df_out, df))
     
 
-def convergenceFig(df_res, E_MeV_arr, emulator_type, channel_lbl=None):
+def convergenceFig(df_res, E_MeV_arr, emulator_type, channel=None):
     import matplotlib.ticker as ticker 
     import seaborn as sns
     from constants import cm
@@ -244,14 +244,15 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type, channel_lbl=None):
                 transform=ax.transAxes)
         props = dict(boxstyle='round', facecolor='lightgray', alpha=0.5)
         emulator_type_lbl = {"GROM": "G-ROM", "LSPG": "LSPG-ROM"}
-        ax.text(0.8, 0.89, f"{emulator_type_lbl[emulator_type.upper()]}", 
-                transform=ax.transAxes, bbox=props)
-        ax.text(0.75, 0.1, f"{alphabet[iE_MeV]})", transform=ax.transAxes)
-        if channel_lbl is not None:
-            ax.text(0.62, 0.1, f"{channel_lbl}", transform=ax.transAxes)
+        ax.text(0.8, 0.95, f"{emulator_type_lbl[emulator_type.upper()]}", 
+                transform=ax.transAxes, 
+                horizontalalignment='right', bbox=props)
+        ax.text(0.75, 0.1, f"({alphabet[iE_MeV]})", transform=ax.transAxes)
+        if channel is not None:
+            ax.text(0.25, 0.35, f"{channel.spectNotationTeX}", transform=ax.transAxes)
         # ax.text(0.05, 0.05, "base-10 logarithmic relative error in $|p/K|$", 
         #         transform=ax.transAxes)
         # if iE_MeV == 0:
         ax.legend(ncol=2, loc="lower left", fontsize=7, handlelength=2)
         # plt.ylim(bottom=1e-9)
-        fig.savefig(f"convergence_minnesota_{emulator_type}_logaxis_symerror.pdf")
+        fig.savefig(f"convergence_minnesota_{emulator_type}_{channel.spectNotation}.pdf")
