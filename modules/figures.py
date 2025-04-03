@@ -141,18 +141,18 @@ class convergenceAnalysis:
             df = pd.concat((df, df_tmp))
         return df if df_out is None else pd.concat((df_out, df))
 
-    def track_LHS_emulator(self, df_out=None, max_samples=10000):
+    def track_LHS_emulator(self, df_out=None):
         ## randomly selects training points from the training set
         print("tracking LHS emulator")
         df = pd.DataFrame()
         for num_snapshots in range(*self.snapshot_range):
-            if comb(len(self.param_samples["training"]), num_snapshots) > max_samples:
+            if comb(len(self.param_samples["training"]), num_snapshots) > 400000:
                 lhs_lecs_array = [self.rng.choice(self.param_samples["training"], 
-                                                  size=num_snapshots, replace=False) for i in range(max_samples)]
+                                                  size=num_snapshots, replace=False) for i in range(self.num_sample)]
                 lhs_lecs_array = np.array(lhs_lecs_array)
             else:
                 combinatorics = list(combinations(self.param_samples["training"], num_snapshots))
-                lhs_lecs_array = self.rng.choice(combinatorics, size=len(combinatorics), replace=False)
+                lhs_lecs_array = self.rng.choice(combinatorics, size=self.num_sample, replace=False)
             print(f"\trunning with {num_snapshots} snapshots ({len(lhs_lecs_array)} samples)")
             for lecs in lhs_lecs_array:
                 lhs_emul = MatrixNumerovROM(init_snapshot_lecs=lecs, 
