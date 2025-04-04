@@ -19,7 +19,7 @@ class convergenceAnalysis:
                  E_MeV=50,
                  potential_lbl="minnesota",
                  snapshot_range=(3, 8+1),
-                 num_sample=400,
+                 num_sample=100,
                  inhomogeneous=True, 
                  emulator_type="lspg", 
                  which="K",
@@ -213,7 +213,7 @@ class convergenceAnalysis:
         return df if df_out is None else pd.concat((df_out, df))
     
 
-def convergenceFig(df_res, E_MeV_arr, emulator_type, channel=None):
+def convergenceFig(E_MeV_arr, emulator_type, potential_lbl, df_res=None, channel=None):
     import matplotlib.ticker as ticker 
     import seaborn as sns
     from constants import cm
@@ -221,7 +221,12 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type, channel=None):
                             sharex=True, sharey=True, constrained_layout=True)
 
     for iE_MeV, E_MeV in enumerate(E_MeV_arr):
-        df = df_res[(df_res["emulator_type"] == emulator_type) & (df_res["E_MeV"] == E_MeV)]
+        if df_res is None:
+            file_name = f"output/df_conv_{potential_lbl}_{channel.spectNotation}_{emulator_type}_{E_MeV}_MeV.csv.gz"
+            print(f"reading '{file_name}'")
+            df = pd.read_csv(file_name)
+        else:
+            df = df_res[(df_res["emulator_type"] == emulator_type) & (df_res["E_MeV"] == E_MeV)]
         ax = axs[iE_MeV]
         # sns.violinplot(data=df, x="num_snapshots", y="error", hue="approach",
         #             gap=.15, split=True, inner="quart", ax=ax, fill=True,
@@ -229,7 +234,7 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type, channel=None):
         sns.boxplot(data=df, x="num_snapshots", y="error", hue="approach",
                     gap=.25, ax=ax, fill=True, width=.8, log_scale=True,
                     showfliers = False,
-                    whis=(1, 99), legend="auto")
+                    whis=(5, 95), legend="auto")
         if iE_MeV == 0:
             ax.set_title("relative error in $p/K$")
         ax.xaxis.set_minor_locator(plt.NullLocator())
@@ -257,5 +262,5 @@ def convergenceFig(df_res, E_MeV_arr, emulator_type, channel=None):
         #         transform=ax.transAxes)
         # if iE_MeV == 0:
         ax.legend(ncol=2, loc="lower left", fontsize=7, handlelength=2)
-        # plt.ylim(bottom=1e-9)
-        fig.savefig(f"convergence_minnesota_{emulator_type}_{channel.spectNotation}.pdf")
+        plt.ylim(bottom=1e-8, top=5e-1)
+        fig.savefig(f"output/convergence_{potential_lbl}_{emulator_type}_{channel.spectNotation}.pdf")
