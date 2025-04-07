@@ -1,5 +1,5 @@
 class Channel:
-    def __init__(self, S=None, L=None, LL=None, J=None, channel=None, as_str=None):
+    def __init__(self, *, S=None, L=None, LL=None, J=None, channel=None, as_str=None):
         if as_str is not None:
             S, L, LL, J, channel = self.parse_spectNotation(as_str)
         self.S = S # spin quantum number
@@ -94,6 +94,11 @@ class Channel:
     def spectNotationTeX(self):
         """returns the spectral notation of the channel (TeX)"""
         return f"$^{self.g}\\mathrm{{{self.Lstr}}}_{self.J}^{{({self._ISOSPIN_LBLS[self.channel]})}}$"
+
+    @property
+    def spectNotationTeXShort(self):
+        """returns the spectral notation of the channel with isospin channel specification (TeX)"""
+        return f"$^{self.g}\\mathrm{{{self.Lstr}}}_{self.J}$"
 
     def __str__(self):
         """returns the string representation of the class"""
