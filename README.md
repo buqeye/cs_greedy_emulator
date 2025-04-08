@@ -10,9 +10,9 @@ This repository accompanies our [manuscript](https://arxiv.org/) in preparation.
 * Galerkin reduced order model (ROM) based on the Numerov method
 * Proper Orthogonalization (POD)
 * efficient offline-online decomposition
-* error estimates and greedy algorithm for snapshot seelction
+* error estimates and greedy algorithm for snapshot selection
 
-The two developed emulators are based on the Petrov-Galerking Reduced Basis Method (RBM). They implement a **greedy approach** to refine their basis iteratively in the training stage, placing snapshots in the interaction’s parameter space where the emulator’s error is estimated to be maximum.  This algorithm implements the estimation of emulator errors, which is still in its infancy in nuclear physics, and has a wide range of applications for emulating solutions of large linear systems. 
+The two developed emulators are based on the Petrov-Galerkin Reduced Basis Method (RBM). They implement a **greedy approach** to refine their basis iteratively in the training stage, placing snapshots in the interaction’s parameter space where the emulator’s error is estimated to be maximum.  This algorithm implements the estimation of emulator errors, which is still in its infancy in nuclear physics, and has a wide range of applications for emulating solutions of large linear systems. 
 This algorithm is contrasted with a **Proper Orthogonalization Decomposition (POD)**.
 
 ## Overview
@@ -24,7 +24,7 @@ The repository is organized as follows:
 * `modules`: contains classes, functions, and more relevant to our emulators.
 * `plots`: contains code for plotting
 * `pdf`: contains the figures generated in the PDF format
-* `src`: contains `C++` code associated with the GT+ potentials. The codes were modified from their original version. Attempt was made to keep the modifications minimal. **Affine versions** of the potentials have been added.
+* `src`: contains `C++` code associated with the GT+ potentials. The codes were modified from their original version, which was kindly provided by I. Tews. Attempt was made to keep the modifications minimal. **Affine versions** of the potentials have been added.
   
 The following `Jupyter` notebooks are included, providing the key results of this work:
 
