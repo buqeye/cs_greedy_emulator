@@ -3,7 +3,7 @@
 <p><img align="right" width="480" src="./logos/streamline.png">
 The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering. 
   
-This repository accompanies our [manuscript](https://arxiv.org/) in preparation.
+This repository accompanies our [manuscript](https://arxiv.org/abs/2504.06092) (PRC in press) in preparation.
 
 **At a glance:**   
 * Numerov method in matrix form (FOM solver)
@@ -102,8 +102,14 @@ python3 -m pytest tests.py
 Please use the following BibTeX entry to cite our work:
 
 ```bibtex
-@article{Maldonado,
-    ...
+@article{Maldonado:2025ftg,
+    author = "Maldonado, J. M. and Drischler, C. and Furnstahl, R. J. and Mlinari{\'c}, P.",
+    title = "{Greedy Emulators for Nuclear Two-Body Scattering}",
+    eprint = "2504.06092",
+    archivePrefix = "arXiv",
+    primaryClass = "nucl-th",
+    month = "4",
+    year = "2025"
 }
 ```
 
