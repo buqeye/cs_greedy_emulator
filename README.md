@@ -3,7 +3,9 @@
 <p><img align="right" width="480" src="./logos/streamline.png">
 The STREAMLINE members at Ohio U and OSU have developed an active learning approach to snapshot selection that allows for the construction of fast & accurate emulators for two-body scattering. 
   
-This repository accompanies our [manuscript](https://arxiv.org/abs/2504.06092) (PRC in press) in preparation.
+This repository accompanies our [manuscript](https://arxiv.org/abs/2504.06092) (Phys. Rev. C in press).
+
+An independent implementation of the greedy algorithm can be found in [this](https://github.com/buqeye/cs_greedy_emulator_josh) repository, which also creates the illustration in [Figure 1](https://github.com/buqeye/cs_greedy_emulator_josh/blob/main/greedy-vs-pod-figure-image-generation.ipynb).
 
 **At a glance:**   
 * Numerov method in matrix form (FOM solver)
@@ -33,13 +35,14 @@ The following `Jupyter` notebooks are included, providing the key results of thi
 * `minnesota.ipynb`: produces all figures pertinent to the simple Minnesota potential.
 * `SCM_playground.ipynb`: contains our explorations of the Successive Constraint Method (SCM).
   
-
 The LEC files in `data` can be generated via:
 ```shell
 make lec_output
 ./lec_output
 ```
 This will also run a unittest that checks whether the function returning the affine decomposition of the chiral interactions matches the output of the original function provided by the developers (i.e., not based on the affine decomposition).
+
+We thank Ingo Tews for allowing us to provide this repository with the (modified) source code that evaluates the local [Gezerlis, Tews et al.](https://inspirehep.net/literature/1298829) chiral interactions.
 
 ## Installing and testing the Python code
 
