@@ -8,6 +8,7 @@ This repository accompanies our [manuscript](https://arxiv.org/abs/2504.06092) (
 An independent implementation of the greedy algorithm can be found in [this](https://github.com/buqeye/cs_greedy_emulator_josh) repository, which creates 
 * [Figure 1](https://github.com/buqeye/cs_greedy_emulator_josh/blob/main/greedy-vs-pod-figure-image-generation.ipynb) (illustration of the POD vs greedy algorithm) and
 * [Figure 11](https://github.com/buqeye/cs_greedy_emulator_josh/blob/main/kohn_anomaly_visualization.ipynb) (illustration of Kohn anomaly removal).
+
 All other figures were created using this repository.
 
 **At a glance:**   
